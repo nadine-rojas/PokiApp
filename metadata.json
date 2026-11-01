@@ -1,0 +1,6 @@
+{
+  "name": "LumiQuest — Academia Interactiva",
+  "description": "Plataforma educativa gamificada en español para niños y jóvenes de 3 a 18 años con cursos adaptados por edad, biblioteca narrada, piano virtual, dibujo realista, juegos multijugador y seguridad parental.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

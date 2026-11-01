@@ -1,0 +1,751 @@
+export type AgeGroup = '3-6' | '7-13' | '14-18';
+
+export type FriendshipStatus = 'accepted' | 'pending_sent' | 'pending_received' | 'blocked';
+
+export type CourseSubject =
+  | 'reading'
+  | 'math'
+  | 'finance'
+  | 'drawing'
+  | 'entrepreneurship'
+  | 'piano'
+  | 'orthography'
+  | 'chess_course'
+  | 'prayer';
+
+export type NavTabId =
+  | 'learn'
+  | 'library'
+  | 'chess'
+  | 'routines'
+  | 'games'
+  | 'friends'
+  | 'profile'
+  | 'shop';
+
+export type ChildMood = 'happy' | 'excited' | 'calm' | 'curious' | 'focused';
+
+export type ShopCategoryTab = 'boards' | 'pieces' | 'coaches' | 'avatars';
+
+export interface RoutineItem {
+  id: string;
+  title: string;
+  time: string;
+  category: string;
+  completedToday: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  name: string;
+  age: number;
+  ageGroup: AgeGroup;
+  avatarId: string;
+  unlockedAvatarIds: string[];
+  selectedBoardId: string;
+  unlockedBoardIds: string[];
+  selectedPiecesId: string;
+  unlockedPiecesIds: string[];
+  selectedCoachId: string;
+  unlockedCoachIds: string[];
+  wallpaperId: string;
+  xp: number;
+  chessXp: number;
+  gems: number;
+  streak: number;
+  completedLessonIds: string[];
+  completedChessLessonIds: string[];
+  completedBookIds: string[];
+  unlockedMedalIds: string[];
+  routines: RoutineItem[];
+  allowedSubjects: CourseSubject[];
+  parentEmail: string;
+  parentPin: string;
+  parentAuthMethod?: 'email' | 'google' | 'apple';
+  parentalChatApproved: boolean;
+  parentalFriendsApproved: boolean;
+  mood?: ChildMood;
+}
+
+export interface ModerationResult {
+  allowed: boolean;
+  sanitizedText: string;
+  reason?: string;
+}
+
+export interface LessonRewardSummary {
+  xpEarned: number;
+  gemsEarned: number;
+  accuracyPercent: number;
+  streakBonusXp: number;
+  passed: boolean;
+  headline: string;
+  subtext: string;
+}
+
+/**
+ * Detector automático de grupo según la edad registrada por el padre/tutor:
+ * - Grupo 1: 3 a 6 años
+ * - Grupo 2: 7 a 13 años
+ * - Grupo 3: 14 a 18 años
+ */
+export function getAgeGroup(age: number): AgeGroup {
+  const clamped = Math.max(3, Math.min(18, Math.round(age)));
+  if (clamped <= 6) return '3-6';
+  if (clamped <= 13) return '7-13';
+  return '14-18';
+}
+
+/**
+ * Determina si el niño pertenece al catálogo de avatares para menores de 9 años (< 9)
+ * o de 9 años en adelante (>= 9).
+ */
+export function getAvatarAgeTier(age: number): 'under_9' | '9_plus' {
+  return age < 9 ? 'under_9' : '9_plus';
+}
+
+/**
+ * La sección "Rutinas" y sus recompensas de +5 gemas por rutina existen desde los 10 años en adelante.
+ */
+export function canAccessRoutines(age: number): boolean {
+  return age >= 10;
+}
+
+/**
+ * El chat está desactivado y oculto mientras el niño esté en el Grupo 1 (3 a 6 años, aprendiendo a leer).
+ * En los juegos, el Grupo 1 solo puede enviar reacciones con emojis.
+ */
+export function isChatEnabledForGroup(ageGroup: AgeGroup): boolean {
+  return ageGroup !== '3-6';
+}
+
+/**
+ * Devuelve el avatar básico inicial gratis según la edad o el grupo de edad.
+ */
+export function getInitialAvatarForAgeGroup(ageGroup: AgeGroup, age?: number): string {
+  const effectiveAge =
+    age !== undefined ? age : ageGroup === '3-6' ? 5 : ageGroup === '7-13' ? 10 : 15;
+  if (effectiveAge < 9) {
+    return 'u9_bmo_console';
+  }
+  return 'p9_flower_crown_boy';
+}
+
+/**
+ * Devuelve las materias disponibles por defecto para cada grupo de edad.
+ */
+export function getDefaultSubjectsForAgeGroup(ageGroup: AgeGroup): CourseSubject[] {
+  if (ageGroup === '3-6') {
+    return ['reading', 'chess_course', 'prayer'];
+  }
+  return [
+    'math',
+    'finance',
+    'drawing',
+    'entrepreneurship',
+    'piano',
+    'orthography',
+    'chess_course',
+    'prayer',
+  ];
+}
+
+/**
+ * Barra de navegación inferior flotante en forma de píldora (sin mostrar nunca grupos de edad):
+ * Incluye "Juegos" en la barra de navegación y mantiene "Rutinas" desde los 10 años.
+ */
+export function getNavigationTabsForAgeGroup(
+  ageGroup: AgeGroup,
+  age?: number
+): NavTabId[] {
+  if (ageGroup === '3-6') {
+    return ['learn', 'library', 'chess', 'games', 'friends', 'profile'];
+  }
+  const effectiveAge = age !== undefined ? age : ageGroup === '14-18' ? 15 : 10;
+  if (canAccessRoutines(effectiveAge)) {
+    return ['learn', 'chess', 'routines', 'games', 'friends', 'profile'];
+  }
+  return ['learn', 'chess', 'games', 'friends', 'profile'];
+}
+
+/**
+ * Crea el perfil de un hijo registrado por su padre/tutor completamente desde cero:
+ * 0 XP, nivel 1, racha 0, 0 gemas, sin medallas, sin amigos, sin rutinas, sin progreso previo
+ * y con 1 artículo básico gratis de cada tipo en la tienda (tablero, fichas, entrenador y avatar).
+ */
+export function createFreshUserAccount(params: {
+  username: string;
+  name: string;
+  age: number;
+  avatarId?: string;
+  parentEmail?: string;
+  parentPin?: string;
+  parentAuthMethod?: 'email' | 'google' | 'apple';
+  parentalApproved?: boolean;
+}): UserProfile {
+  const safeAge = Math.max(3, Math.min(18, Math.round(params.age)));
+  const ageGroup = getAgeGroup(safeAge);
+  const starterAvatar =
+    params.avatarId || getInitialAvatarForAgeGroup(ageGroup, safeAge);
+  const cleanUsername = params.username.trim().startsWith('@')
+    ? params.username.trim().toLowerCase()
+    : `@${params.username.trim().toLowerCase().replace(/\s+/g, '_')}`;
+  const cleanPin =
+    params.parentPin && /^\d{4}$/.test(params.parentPin.trim())
+      ? params.parentPin.trim()
+      : '1234';
+
+  return {
+    id: `usr_${cleanUsername.replace(/[^a-z0-9]/g, '')}_${safeAge}_${Date.now().toString(36).slice(-3)}`,
+    username: cleanUsername,
+    name: params.name.trim(),
+    age: safeAge,
+    ageGroup,
+    avatarId: starterAvatar,
+    unlockedAvatarIds: [starterAvatar],
+    selectedBoardId: 'board_classic_wood',
+    unlockedBoardIds: ['board_classic_wood'],
+    selectedPiecesId: 'pieces_classic',
+    unlockedPiecesIds: ['pieces_classic'],
+    selectedCoachId: 'coach_kind',
+    unlockedCoachIds: ['coach_kind'],
+    wallpaperId: ageGroup === '14-18' ? 'cosmic_aurora' : 'meadow_day',
+    xp: 0,
+    chessXp: 0,
+    gems: 0,
+    streak: 0,
+    completedLessonIds: [],
+    completedChessLessonIds: [],
+    completedBookIds: [],
+    unlockedMedalIds: [],
+    routines: [],
+    allowedSubjects: getDefaultSubjectsForAgeGroup(ageGroup),
+    parentEmail: (params.parentEmail || 'tutor@familia.es').trim(),
+    parentPin: cleanPin,
+    parentAuthMethod: params.parentAuthMethod || 'email',
+    parentalChatApproved:
+      ageGroup === '3-6'
+        ? false
+        : params.parentalApproved !== undefined
+        ? Boolean(params.parentalApproved)
+        : true,
+    parentalFriendsApproved:
+      params.parentalApproved !== undefined ? Boolean(params.parentalApproved) : true,
+    mood: 'happy',
+  };
+}
+
+/**
+ * Normaliza perfiles guardados en versiones previas para asegurar que tengan los campos de la tienda.
+ */
+export function ensureShopDefaultsOnProfile(profile: UserProfile): UserProfile {
+  const defaultBoard = profile.selectedBoardId || 'board_classic_wood';
+  const defaultPieces = profile.selectedPiecesId || 'pieces_classic';
+  const defaultCoach = profile.selectedCoachId || 'coach_kind';
+
+  return {
+    ...profile,
+    selectedBoardId: defaultBoard,
+    unlockedBoardIds:
+      Array.isArray(profile.unlockedBoardIds) && profile.unlockedBoardIds.length > 0
+        ? profile.unlockedBoardIds
+        : [defaultBoard],
+    selectedPiecesId: defaultPieces,
+    unlockedPiecesIds:
+      Array.isArray(profile.unlockedPiecesIds) && profile.unlockedPiecesIds.length > 0
+        ? profile.unlockedPiecesIds
+        : [defaultPieces],
+    selectedCoachId: defaultCoach,
+    unlockedCoachIds:
+      Array.isArray(profile.unlockedCoachIds) && profile.unlockedCoachIds.length > 0
+        ? profile.unlockedCoachIds
+        : [defaultCoach],
+  };
+}
+
+/**
+ * Verifica si un niño del Grupo 1 (3 a 6 años) completó ambos cursos obligatorios:
+ * 1) El curso de aprender a leer (todas sus lecciones), y
+ * 2) El curso de ajedrez para menores (todas sus lecciones).
+ * Al completar ambos, pasa automáticamente al Grupo 2 con celebración y medalla especial.
+ */
+export function checkGroup1ToGroup2Graduation(
+  ageGroup: AgeGroup,
+  completedLessonIds: string[],
+  readingCourseLessonIds: string[],
+  chessCourseLessonIds: string[]
+): boolean {
+  if (ageGroup !== '3-6') return false;
+  if (readingCourseLessonIds.length === 0 || chessCourseLessonIds.length === 0) {
+    return false;
+  }
+  const finishedReading = readingCourseLessonIds.every((id) =>
+    completedLessonIds.includes(id)
+  );
+  const finishedChess = chessCourseLessonIds.every((id) =>
+    completedLessonIds.includes(id)
+  );
+  return finishedReading && finishedChess;
+}
+
+/**
+ * Promueve automáticamente a un niño del Grupo 1 al Grupo 2 tras completar Lectura y Ajedrez,
+ * otorgándole la medalla especial de graduación y activando el permiso de chat si corresponde.
+ */
+export function promoteChildFromGroup1ToGroup2(profile: UserProfile): UserProfile {
+  const nextAvatar = getInitialAvatarForAgeGroup('7-13', profile.age);
+  const nextUnlockedAvatars = Array.from(
+    new Set([...profile.unlockedAvatarIds, nextAvatar])
+  );
+  const nextMedals = Array.from(
+    new Set([...profile.unlockedMedalIds, 'medal-graduado-g1'])
+  );
+
+  return {
+    ...profile,
+    ageGroup: '7-13',
+    avatarId: profile.avatarId || nextAvatar,
+    unlockedAvatarIds: nextUnlockedAvatars,
+    unlockedMedalIds: nextMedals,
+    allowedSubjects: getDefaultSubjectsForAgeGroup('7-13'),
+    parentalChatApproved: true,
+  };
+}
+
+/**
+ * Permite exclusivamente al padre/tutor (con su PIN de 4 dígitos) actualizar la edad del hijo.
+ * Si el hijo estaba en Grupo 2 y el padre actualiza su edad a 14 años o más, pasa al Grupo 3.
+ */
+export function updateChildAgeByParent(
+  profile: UserProfile,
+  newAge: number,
+  enteredPin: string
+): {
+  success: boolean;
+  updatedProfile: UserProfile;
+  graduatedToGroup3: boolean;
+  error?: string;
+} {
+  if (enteredPin.trim() !== (profile.parentPin || '1234')) {
+    return {
+      success: false,
+      updatedProfile: profile,
+      graduatedToGroup3: false,
+      error: 'PIN parental incorrecto. Solo el padre o tutor puede modificar la edad.',
+    };
+  }
+
+  const clampedAge = Math.max(3, Math.min(18, Math.round(newAge)));
+  const newGroup = getAgeGroup(clampedAge);
+  const previousGroup = profile.ageGroup;
+  const graduatedToGroup3 = previousGroup !== '14-18' && newGroup === '14-18';
+
+  const groupChanged = previousGroup !== newGroup;
+  const ageTierChanged = getAvatarAgeTier(profile.age) !== getAvatarAgeTier(clampedAge);
+  const starterForNewAge = getInitialAvatarForAgeGroup(newGroup, clampedAge);
+  const nextUnlockedAvatars =
+    groupChanged || ageTierChanged
+      ? Array.from(new Set([...profile.unlockedAvatarIds, starterForNewAge]))
+      : profile.unlockedAvatarIds;
+
+  return {
+    success: true,
+    graduatedToGroup3,
+    updatedProfile: {
+      ...profile,
+      age: clampedAge,
+      ageGroup: newGroup,
+      avatarId:
+        groupChanged || ageTierChanged ? starterForNewAge : profile.avatarId,
+      unlockedAvatarIds: nextUnlockedAvatars,
+      wallpaperId: newGroup === '14-18' ? 'cosmic_aurora' : profile.wallpaperId,
+      allowedSubjects: groupChanged
+        ? getDefaultSubjectsForAgeGroup(newGroup)
+        : profile.allowedSubjects,
+      parentalChatApproved:
+        newGroup === '3-6' ? false : profile.parentalChatApproved,
+    },
+  };
+}
+
+/**
+ * Determina si una lección está desbloqueada.
+ * Todas las lecciones empiezan en la primera (índice 0) y las demás están bloqueadas
+ * hasta completar la lección anterior.
+ */
+export function isLessonUnlocked(
+  lessonIndex: number,
+  previousLessonId: string | null,
+  completedLessonIds: string[]
+): boolean {
+  if (lessonIndex === 0 || !previousLessonId) return true;
+  return completedLessonIds.includes(previousLessonId);
+}
+
+/**
+ * Verifica que dos usuarios pertenezcan estrictamente al mismo grupo de edad
+ * para poder ser amigos, chatear o jugar juntos.
+ */
+export function areUsersInSameAgeGroup(ageGroupA: AgeGroup, ageGroupB: AgeGroup): boolean {
+  return ageGroupA === ageGroupB;
+}
+
+/**
+ * Otorga +5 gemas al completar una rutina diaria (disponible desde los 10 años en adelante).
+ */
+export function completeDailyRoutineReward(
+  alreadyCompletedToday: boolean,
+  currentGems: number
+): { gemsEarned: number; newGemTotal: number } {
+  if (alreadyCompletedToday) {
+    return { gemsEarned: 0, newGemTotal: currentGems };
+  }
+  return {
+    gemsEarned: 5,
+    newGemTotal: currentGems + 5,
+  };
+}
+
+/**
+ * Calcula las gemas ganadas al completar actividades para que TODOS los niños
+ * (incluidos los menores de 10 años) puedan ganar gemas:
+ * - routine: +5 gemas
+ * - lesson: +5 gemas
+ * - chess_win: +8 gemas
+ * - chess_lesson: +5 gemas
+ * - videogame_win: +5 gemas
+ */
+export function calculateActivityGemReward(
+  activityType: 'routine' | 'lesson' | 'chess_win' | 'chess_lesson' | 'videogame_win',
+  currentGems: number
+): { gemsEarned: number; newGemTotal: number } {
+  const rewardTable: Record<typeof activityType, number> = {
+    routine: 5,
+    lesson: 5,
+    chess_win: 8,
+    chess_lesson: 5,
+    videogame_win: 5,
+  };
+  const gemsEarned = rewardTable[activityType] || 5;
+  return {
+    gemsEarned,
+    newGemTotal: Math.max(0, currentGems) + gemsEarned,
+  };
+}
+
+/**
+ * Compra o desbloquea cualquier artículo de la Tienda (Tableros, Fichas, Entrenadores o Avatares) con gemas.
+ * Si no alcanzan las gemas, devuelve un mensaje de ánimo indicando cuántas gemas faltan y cómo ganarlas.
+ */
+export function purchaseShopItemWithGems(
+  currentGems: number,
+  cost: number,
+  alreadyUnlocked: boolean,
+  itemName: string = 'este artículo'
+): { success: boolean; remainingGems: number; missingGems: number; reason?: string } {
+  if (alreadyUnlocked) {
+    return { success: true, remainingGems: currentGems, missingGems: 0 };
+  }
+  if (currentGems < cost) {
+    const missing = cost - currentGems;
+    return {
+      success: false,
+      remainingGems: currentGems,
+      missingGems: missing,
+      reason: `¡Ánimo! Te faltan ${missing} gemas para desbloquear "${itemName}" (tienes ${currentGems} de ${cost} gemas). ¡Sigue ganando gemas al completar lecciones, ganar partidas de ajedrez, triunfar en los videojuegos o cumplir tus rutinas!`,
+    };
+  }
+  return {
+    success: true,
+    remainingGems: currentGems - cost,
+    missingGems: 0,
+  };
+}
+
+/**
+ * Alias compatible para compra de avatares con gemas.
+ */
+export function purchaseAvatarWithGems(
+  currentGems: number,
+  cost: number,
+  alreadyUnlocked: boolean
+): { success: boolean; remainingGems: number; reason?: string } {
+  const res = purchaseShopItemWithGems(currentGems, cost, alreadyUnlocked, 'este avatar');
+  return {
+    success: res.success,
+    remainingGems: res.remainingGems,
+    reason: res.reason,
+  };
+}
+
+/**
+ * Los menores de 13 años requieren aprobación del padre o tutor para el chat y las amistades.
+ */
+export function requiresParentalConsent(age: number): boolean {
+  return age < 13;
+}
+
+/**
+ * Los usuarios de 7 a 18 años pueden personalizar su perfil con un fondo de pantalla.
+ */
+export function canCustomizeWallpaper(age: number): boolean {
+  return age >= 7 && age <= 18;
+}
+
+/**
+ * Calcula el nivel actual del estudiante en función de sus puntos de experiencia (XP).
+ * Con 0 XP empieza en Nivel 1 (0%).
+ */
+export function calculateLevelFromXP(xp: number): {
+  level: number;
+  currentLevelXp: number;
+  nextLevelXp: number;
+  progressPercent: number;
+} {
+  const safeXp = Math.max(0, Math.floor(xp));
+  const xpPerLevel = 250;
+  const level = Math.floor(safeXp / xpPerLevel) + 1;
+  const currentLevelXp = safeXp % xpPerLevel;
+  const progressPercent = Math.min(100, Math.round((currentLevelXp / xpPerLevel) * 100));
+  return {
+    level,
+    currentLevelXp,
+    nextLevelXp: xpPerLevel,
+    progressPercent,
+  };
+}
+
+/**
+ * Mensajes de ánimo adaptados a cada grupo de edad cuando el usuario acierta o se equivoca.
+ */
+export function getEncouragementMessage(
+  isCorrect: boolean,
+  ageGroup: AgeGroup,
+  seed: number = 0
+): string {
+  const positiveByGroup: Record<AgeGroup, string[]> = {
+    '3-6': [
+      '¡Súper bien! ¡Brillas como una estrella!',
+      '¡Bravo! ¡Lo lograste genial!',
+      '¡Increíble! ¡Qué bien aprendes!',
+    ],
+    '7-13': [
+      '¡Excelente respuesta! Tu aventura avanza al siguiente nivel.',
+      '¡Imparable! Dominaste este reto de la misión.',
+      '¡Muy bien pensado! Sumas más puntos de experiencia.',
+    ],
+    '14-18': [
+      '¡Razonamiento impecable! Nivel de dominio avanzado.',
+      '¡Exacto! Gran precisión analítica en este ejercicio.',
+      '¡Criterio experto! Avanzas con paso firme en el módulo.',
+    ],
+  };
+
+  const retryByGroup: Record<AgeGroup, string[]> = {
+    '3-6': [
+      '¡Casi! Vamos a intentarlo otra vez con calma.',
+      '¡No pasa nada! Escucha la pista y prueba otra vez.',
+      '¡Tú puedes! Toca otra respuesta.',
+    ],
+    '7-13': [
+      '¡Buen intento! Revisa la pista y vuelve a probar, así se aprende.',
+      '¡Casi lo tienes! Equivocarse es parte del entrenamiento.',
+      '¡Ánimo! Analiza las opciones con calma para el siguiente intento.',
+    ],
+    '14-18': [
+      'Respuesta incorrecta. Revisa el fundamento técnico e inténtalo de nuevo.',
+      'Analiza el planteamiento desde otro ángulo. ¡Vuelve a intentarlo!',
+      'Casi aciertas. Observa los detalles de la pista.',
+    ],
+  };
+
+  const list = isCorrect ? positiveByGroup[ageGroup] : retryByGroup[ageGroup];
+  const idx = Math.abs(seed) % list.length;
+  return list[idx];
+}
+
+/**
+ * Calcula los puntos de experiencia (XP) y gemas (+5 gemas al aprobar) al finalizar una lección.
+ */
+export function calculateLessonReward(
+  correctCount: number,
+  totalQuestions: number,
+  currentStreak: number,
+  ageGroup: AgeGroup
+): LessonRewardSummary {
+  const safeTotal = Math.max(1, totalQuestions);
+  const safeCorrect = Math.max(0, Math.min(safeTotal, correctCount));
+  const accuracyPercent = Math.round((safeCorrect / safeTotal) * 100);
+  const basePerCorrect = ageGroup === '14-18' ? 20 : 15;
+  const streakBonusXp = Math.min(30, Math.max(0, currentStreak) * 3);
+  const xpEarned = safeCorrect * basePerCorrect + (accuracyPercent >= 60 ? streakBonusXp : 5);
+  const passed = accuracyPercent >= 60;
+  const gemsEarned = passed ? 5 : 2;
+
+  const headline =
+    accuracyPercent === 100
+      ? '¡Lección Perfecta!'
+      : passed
+      ? '¡Lección Completada!'
+      : '¡Buen Esfuerzo! Sigue Practicando';
+
+  const subtext =
+    ageGroup === '3-6'
+      ? `¡Ganaste estrellas mágicas, +${gemsEarned} gemas y desbloqueaste el siguiente paso!`
+      : `Obtuviste ${accuracyPercent}% de precisión, sumaste +${xpEarned} XP y ganaste +${gemsEarned} gemas.`;
+
+  return {
+    xpEarned,
+    gemsEarned,
+    accuracyPercent,
+    streakBonusXp,
+    passed,
+    headline,
+    subtext,
+  };
+}
+
+const BANNED_WORDS = [
+  'tonto',
+  'tonta',
+  'idiota',
+  'estupido',
+  'estúpido',
+  'estupida',
+  'estúpida',
+  'bobo',
+  'boba',
+  'inutil',
+  'inútil',
+  'feo',
+  'fea',
+  'odio',
+  'maldito',
+  'maldita',
+  'grosero',
+  'callate',
+  'cállate',
+  'pelea',
+  'basura',
+];
+
+/**
+ * Modera mensajes del chat para proteger a menores:
+ * 1. Bloquea palabras inapropiadas o insultos.
+ * 2. Bloquea compartir datos personales (teléfonos, correos electrónicos, direcciones físicas).
+ */
+export function moderateChatMessage(rawText: string): ModerationResult {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return {
+      allowed: false,
+      sanitizedText: '',
+      reason: 'Escribe un mensaje antes de enviar.',
+    };
+  }
+
+  const normalized = trimmed
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  for (const word of BANNED_WORDS) {
+    const cleanWord = word.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const regex = new RegExp(`\\b${cleanWord}\\b`, 'i');
+    if (regex.test(normalized)) {
+      return {
+        allowed: false,
+        sanitizedText: trimmed.replace(regex, '***'),
+        reason:
+          'Mensaje bloqueado por el filtro de seguridad: mantengamos un lenguaje amable y respetuoso.',
+      };
+    }
+  }
+
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+  if (emailRegex.test(trimmed)) {
+    return {
+      allowed: false,
+      sanitizedText: trimmed.replace(emailRegex, '[correo oculto]'),
+      reason:
+        'Por tu seguridad, no está permitido compartir correos electrónicos en el chat.',
+    };
+  }
+
+  const phoneDigits = trimmed.replace(/\D/g, '');
+  if (phoneDigits.length >= 7) {
+    return {
+      allowed: false,
+      sanitizedText: '[número oculto]',
+      reason:
+        'Por tu seguridad, no está permitido compartir números de teléfono ni datos privados.',
+    };
+  }
+
+  const addressRegex = /\b(calle|avenida|av\.|domicilio|mi direccion es|vivo en la calle)\b/i;
+  if (addressRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[dirección oculta]',
+      reason:
+        'Por tu seguridad, nunca compartas tu dirección física con otras personas en internet.',
+    };
+  }
+
+  return {
+    allowed: true,
+    sanitizedText: trimmed,
+  };
+}
+
+/**
+ * Verifica si dos usuarios pueden chatear:
+ * - Si el niño está en el Grupo 1 (3 a 6 años), el chat está totalmente desactivado (solo emojis en juegos).
+ * - Deben pertenecer al mismo grupo de edad.
+ * - Deben haber aceptado la solicitud de amistad ('accepted').
+ * - Si el padre/tutor desactivó el chat desde el panel parental, no puede chatear.
+ */
+export function canUsersChat(
+  friendshipStatus: FriendshipStatus,
+  userAge: number,
+  parentalChatApproved: boolean,
+  sameAgeGroup: boolean = true,
+  userAgeGroup?: AgeGroup
+): { canChat: boolean; reason?: string } {
+  const effectiveGroup = userAgeGroup || getAgeGroup(userAge);
+  if (effectiveGroup === '3-6') {
+    return {
+      canChat: false,
+      reason:
+        'El chat está desactivado para los más pequeños mientras aprenden a leer. ¡En los juegos pueden enviarse reacciones con emojis!',
+    };
+  }
+  if (!sameAgeGroup) {
+    return {
+      canChat: false,
+      reason: 'Los chats y amistades son exclusivamente entre niños de la misma etapa.',
+    };
+  }
+  if (friendshipStatus === 'blocked') {
+    return {
+      canChat: false,
+      reason: 'Este usuario está bloqueado. No pueden enviarse mensajes.',
+    };
+  }
+  if (friendshipStatus !== 'accepted') {
+    return {
+      canChat: false,
+      reason:
+        'Solo los amigos que ya aceptaron la solicitud de amistad pueden chatear entre sí.',
+    };
+  }
+  if (!parentalChatApproved) {
+    return {
+      canChat: false,
+      reason:
+        'El padre o tutor ha desactivado el chat desde el Panel de Padres con PIN.',
+    };
+  }
+  return { canChat: true };
+}
