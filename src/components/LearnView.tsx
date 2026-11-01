@@ -824,23 +824,26 @@ export function LearnView({
         </section>
       )}
 
-      {/* MAPA DE LECCIONES SECUENCIALES + ESTADÍSTICAS CON ANILLOS DE PROGRESO */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* MAPA DE LECCIONES SECUENCIALES ESTILO DUOLINGO + ESTADÍSTICAS CON ANILLOS DE PROGRESO */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
         <div
-          className={`lg:col-span-8 rounded-[32px] border p-6 sm:p-8 space-y-6 ${
+          data-testid="duolingo-learning-path"
+          className={`lg:col-span-8 rounded-[32px] border p-5 sm:p-8 space-y-6 ${
             isTeenDark
               ? 'bg-[#181326] border-purple-900/50 text-white'
-              : 'bg-white border-slate-200/90 text-slate-900 shadow-sm'
+              : 'bg-white dark:bg-[#181326] border-slate-200/90 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
           }`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/30">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/40 dark:border-white/10">
+            <div className="min-w-0">
               <span
                 className={`text-xs font-extrabold ${
-                  isTeenDark ? 'text-[#BEF264]' : 'text-emerald-600'
+                  isTeenDark
+                    ? 'text-[#BEF264]'
+                    : 'text-emerald-600 dark:text-[#BEF264]'
                 }`}
               >
-                Ruta Paso a Paso
+                Ruta Gamificada Estilo Duolingo · +5 Gemas por Nivel
               </span>
               <h2 className="text-xl sm:text-2xl font-extrabold mt-0.5 font-display">
                 {activeCourse.title}
@@ -859,8 +862,8 @@ export function LearnView({
             </div>
           </div>
 
-          {/* Lista de lecciones (Nivel 1 abierto, siguientes bloqueadas hasta completar la anterior) */}
-          <div className="space-y-4">
+          {/* Ruta de Nodos Secuenciales Estilo Duolingo (Nivel 1 abierto, siguientes bloqueados hasta completar el anterior) */}
+          <div className="relative space-y-5">
             {activeCourse.lessons.map((lesson, idx) => {
               const prevLessonId =
                 idx > 0 ? activeCourse.lessons[idx - 1].id : null;
@@ -870,88 +873,100 @@ export function LearnView({
                 completedLessonIds
               );
               const isCompleted = completedLessonIds.includes(lesson.id);
+              const isLast = idx === activeCourse.lessons.length - 1;
 
               return (
-                <div
-                  key={lesson.id}
-                  className={`rounded-3xl border-2 p-5 transition-all ${
-                    isCompleted
-                      ? 'bg-emerald-500/10 border-emerald-500/50'
-                      : isUnlocked
-                      ? isTeenDark
-                        ? 'bg-[#221B35] border-purple-700/50'
-                        : 'bg-[#FFFDF7] border-amber-200'
-                      : 'opacity-55 border-slate-200/40'
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div
-                        className={`w-14 h-14 rounded-2xl flex items-center justify-center font-display font-black text-xl shrink-0 shadow-xs ${
-                          isCompleted
-                            ? 'bg-emerald-500 text-white'
-                            : isUnlocked
-                            ? isTeenDark
-                              ? 'bg-[#BEF264] text-slate-950'
-                              : 'bg-[#FF6B6B] text-white'
-                            : 'bg-slate-300 text-slate-600'
-                        }`}
-                      >
-                        {isCompleted ? (
-                          <CheckCircle2 className="w-7 h-7" />
-                        ) : isUnlocked ? (
-                          lesson.levelNumber
-                        ) : (
-                          <Lock className="w-6 h-6" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold opacity-75">
-                          Nivel {lesson.levelNumber} · {lesson.durationMinutes} min · +{lesson.xpReward} XP
-                        </div>
-                        <h3
-                          className={`font-extrabold mt-0.5 ${
-                            isYoungKid ? 'text-xl' : 'text-lg'
+                <div key={lesson.id} className="relative">
+                  {!isLast && (
+                    <div
+                      aria-hidden="true"
+                      className={`hidden sm:block absolute left-11 top-20 bottom-[-22px] w-1 rounded-full ${
+                        isCompleted
+                          ? 'bg-emerald-500'
+                          : 'bg-slate-200 dark:bg-slate-700'
+                      }`}
+                    />
+                  )}
+                  <div
+                    className={`rounded-3xl border-2 p-4 sm:p-5 transition-all ${
+                      isCompleted
+                        ? 'bg-emerald-500/10 border-emerald-500/50'
+                        : isUnlocked
+                        ? isTeenDark
+                          ? 'bg-[#221B35] border-purple-700/60 shadow-sm'
+                          : 'bg-[#FFFDF7] dark:bg-[#221B35] border-amber-300 dark:border-purple-700/60 shadow-sm'
+                        : 'opacity-60 border-slate-200/50 dark:border-slate-800'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-start gap-4 min-w-0">
+                        <div
+                          className={`w-14 h-14 rounded-full border-b-4 flex items-center justify-center font-display font-black text-xl shrink-0 shadow-xs ${
+                            isCompleted
+                              ? 'bg-emerald-500 border-emerald-700 text-white'
+                              : isUnlocked
+                              ? isTeenDark
+                                ? 'bg-[#BEF264] border-[#84CC16] text-slate-950'
+                                : 'bg-[#84CC16] border-[#4D7C0F] text-slate-950'
+                              : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500'
                           }`}
                         >
-                          {lesson.title}
-                        </h3>
-                        <p className="text-sm opacity-75 mt-1">
-                          {isUnlocked
-                            ? lesson.description
-                            : `Completa el Nivel ${lesson.levelNumber - 1} para abrir esta lección.`}
-                        </p>
+                          {isCompleted ? (
+                            <CheckCircle2 className="w-7 h-7" />
+                          ) : isUnlocked ? (
+                            lesson.levelNumber
+                          ) : (
+                            <Lock className="w-6 h-6" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold opacity-75">
+                            Nivel {lesson.levelNumber} · {lesson.durationMinutes} min · +{lesson.xpReward} XP · +5 Gemas
+                          </div>
+                          <h3
+                            className={`font-extrabold mt-0.5 ${
+                              isYoungKid ? 'text-xl' : 'text-lg'
+                            }`}
+                          >
+                            {lesson.title}
+                          </h3>
+                          <p className="text-sm opacity-75 mt-1">
+                            {isUnlocked
+                              ? lesson.description
+                              : `Completa el Nivel ${lesson.levelNumber - 1} para desbloquear esta lección.`}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      type="button"
-                      disabled={!isUnlocked}
-                      onClick={() => startLesson(lesson)}
-                      className={`px-5 py-3 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 whitespace-nowrap shrink-0 ${
-                        isYoungKid ? 'h-14 text-base px-6' : 'h-11'
-                      } ${
-                        !isUnlocked
-                          ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                          : isCompleted
-                          ? 'bg-emerald-500/20 text-emerald-600 hover:bg-emerald-500/30'
-                          : isTeenDark
-                          ? 'bg-[#BEF264] text-slate-950 hover:opacity-95 shadow-sm'
-                          : 'bg-[#84CC16] text-slate-950 hover:bg-[#65A30D] shadow-sm'
-                      }`}
-                    >
-                      {!isUnlocked ? (
-                        <>
-                          <Lock className="w-4 h-4" />
-                          Bloqueada
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 fill-current" />
-                          {isCompleted ? 'Practicar de Nuevo' : 'Empezar Lección'}
-                        </>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        disabled={!isUnlocked}
+                        onClick={() => startLesson(lesson)}
+                        className={`px-5 py-3 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 whitespace-nowrap shrink-0 ${
+                          isYoungKid ? 'h-14 text-base px-6' : 'h-11'
+                        } ${
+                          !isUnlocked
+                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+                            : isCompleted
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/30'
+                            : isTeenDark
+                            ? 'bg-[#BEF264] text-slate-950 hover:opacity-95 shadow-sm'
+                            : 'bg-[#84CC16] text-slate-950 hover:bg-[#65A30D] shadow-sm'
+                        }`}
+                      >
+                        {!isUnlocked ? (
+                          <>
+                            <Lock className="w-4 h-4" />
+                            Bloqueada
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 fill-current" />
+                            {isCompleted ? 'Practicar de Nuevo' : 'Empezar Lección'}
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -960,7 +975,7 @@ export function LearnView({
 
           {/* SECCIÓN ESPECIAL DENTRO DEL CURSO DE ORACIÓN: ORACIONES Y GUÍA PASO A PASO DEL SANTO ROSARIO */}
           {activeCourse.subject === 'prayer' && (
-            <div className="pt-6 border-t border-slate-200/40 space-y-6">
+            <div className="pt-6 border-t border-slate-200/40 dark:border-white/10 space-y-6">
               <div>
                 <div className="text-xs font-bold text-sky-500">
                   Guía Interactiva con Audio · Paso a Paso
@@ -980,7 +995,7 @@ export function LearnView({
                     className={`p-4 rounded-2xl border space-y-2.5 ${
                       isTeenDark
                         ? 'bg-[#221B35] border-purple-800/50'
-                        : 'bg-sky-50/50 border-sky-200'
+                        : 'bg-sky-50/50 dark:bg-[#221B35] border-sky-200 dark:border-purple-800/50'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -1010,7 +1025,7 @@ export function LearnView({
                 className={`p-5 rounded-3xl border space-y-4 ${
                   isTeenDark
                     ? 'bg-[#120E20] border-purple-900/50'
-                    : 'bg-amber-50/50 border-amber-200'
+                    : 'bg-amber-50/50 dark:bg-[#120E20] border-amber-200 dark:border-purple-900/50'
                 }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1036,7 +1051,7 @@ export function LearnView({
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
                           selectedMysteryGroupId === mGroup.id
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-200/60 text-slate-800'
+                            : 'bg-slate-200/60 dark:bg-white/10 text-slate-800 dark:text-slate-200'
                         }`}
                       >
                         {mGroup.name.replace('Misterios ', '')} ({mGroup.daysText})
@@ -1065,7 +1080,7 @@ export function LearnView({
                   ))}
                 </div>
 
-                <div className="p-4 rounded-2xl bg-black/5 space-y-3">
+                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-bold text-emerald-500">
@@ -1129,7 +1144,7 @@ export function LearnView({
                     </button>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white/90 text-slate-900 text-xs leading-relaxed">
+                  <div className="p-3 rounded-xl bg-white/90 dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs leading-relaxed">
                     {getBeadPrayerText()}
                   </div>
 
@@ -1138,7 +1153,7 @@ export function LearnView({
                       type="button"
                       disabled={beadStep === 0}
                       onClick={() => setBeadStep((b) => Math.max(0, b - 1))}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40 flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold disabled:opacity-40 flex items-center gap-1"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                       Cuenta Anterior
@@ -1168,13 +1183,13 @@ export function LearnView({
           )}
         </div>
 
-        {/* Columna derecha: Racha con Llama/Rayo, Anillo de Nivel y Calendario */}
+        {/* Columna derecha: Racha con Llama/Rayo, Anillo de Nivel y Resumen de Etapa */}
         <aside className="lg:col-span-4 space-y-6">
           <div
             className={`rounded-[32px] border p-6 space-y-5 ${
               isTeenDark
                 ? 'bg-[#181326] border-purple-900/50 text-white'
-                : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -1203,16 +1218,40 @@ export function LearnView({
             </div>
 
             {isYoungKid && (
-              <div className="p-4 rounded-2xl bg-[#ECFCCB] border border-[#84CC16] text-slate-900 text-xs font-bold space-y-1">
+              <div className="p-4 rounded-2xl bg-[#ECFCCB] dark:bg-emerald-950/60 border border-[#84CC16] text-slate-900 dark:text-emerald-100 text-xs font-bold space-y-1">
                 <div>★ Meta Especial de Graduación:</div>
                 <p className="font-medium">
-                  Cuando completes todas las lecciones de <strong>Aprendo a Leer</strong> y de <strong>Ajedrez Básico</strong>, pasarás automáticamente a la siguiente etapa con una fiesta y una medalla especial.
+                  Cuando completes todas las lecciones de <strong>Aprendo a Leer</strong> y de <strong>Ajedrez para Menores</strong>, pasarás automáticamente a la siguiente etapa con una fiesta y una medalla especial.
                 </p>
               </div>
             )}
           </div>
         </aside>
       </div>
+
+      {/* BIBLIOTECA INTEGRADA EN LA PÁGINA PARA ETAPA 1 (3 A 6 AÑOS) */}
+      {isYoungKid && (
+        <section
+          data-testid="integrated-library-section"
+          className="pt-4 space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+            <div>
+              <span className="text-xs font-black text-[#FF6B6B]">
+                Biblioteca Integrada · Etapa Inicial (3 a 6 años)
+              </span>
+              <h2 className="text-2xl font-black font-display text-slate-900 dark:text-white">
+                Libros Interactivos Ilustrados para Practicar la Lectura
+              </h2>
+            </div>
+          </div>
+          <LibraryView
+            ageGroup={ageGroup}
+            completedBookIds={completedBookIds}
+            onCompleteBook={onCompleteBook}
+          />
+        </section>
+      )}
 
       {/* MODAL DE LECCIÓN INTERACTIVA */}
       {activeLesson && (

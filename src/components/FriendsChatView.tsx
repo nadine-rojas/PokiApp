@@ -55,6 +55,7 @@ interface FriendsChatViewProps {
   sameGroupRegisteredUsers: UserProfile[];
   friendships: FriendshipRecord[];
   onSendFriendRequestByUserId: (targetUserId: string) => void;
+  onSendFriendRequestByUsername?: (usernameOrName: string) => void;
   onAcceptFriend: (friendshipId: string) => void;
   onRejectFriend: (friendshipId: string) => void;
   onBlockOrReportFriend: (friendshipId: string, action: 'block' | 'report') => void;
@@ -68,6 +69,7 @@ export function FriendsChatView({
   sameGroupRegisteredUsers,
   friendships,
   onSendFriendRequestByUserId,
+  onSendFriendRequestByUsername,
   onAcceptFriend,
   onRejectFriend,
   onBlockOrReportFriend,
@@ -94,11 +96,16 @@ export function FriendsChatView({
   const pendingSent = friendships.filter(
     (f) => f.statusForCurrent === 'pending_sent'
   );
+  const allPendingRequests = [...pendingReceived, ...pendingSent];
 
   const [selectedFriendshipId, setSelectedFriendshipId] = useState<string>(
     acceptedFriends[0]?.id || friendships[0]?.id || ''
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [newFriendInput, setNewFriendInput] = useState('');
+  const [friendRequestFeedback, setFriendRequestFeedback] = useState<
+    string | null
+  >(null);
   const [messageInput, setMessageInput] = useState('');
   const [moderationAlert, setModerationAlert] = useState<string | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
@@ -148,6 +155,18 @@ export function FriendsChatView({
     setMessageInput('');
   };
 
+  const handleAddFriendByUsername = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = newFriendInput.trim();
+    if (!cleaned) return;
+    playRewardSound('pop');
+    onSendFriendRequestByUsername?.(cleaned);
+    setNewFriendInput('');
+    setFriendRequestFeedback(
+      `Solicitud de amistad enviada a "${cleaned}". El chat y las partidas se activarán cuando acepte la solicitud.`
+    );
+  };
+
   // Usuarios reales registrados en la misma etapa
   const availableSameGroupUsers = sameGroupRegisteredUsers.filter(
     (u) =>
@@ -168,32 +187,32 @@ export function FriendsChatView({
             ? 'bg-gradient-to-r from-[#FFF5F5] to-[#ECFCCB] border-2 border-[#FF6B6B]/40 text-slate-900 shadow-sm'
             : isTeenDark
             ? 'bg-[#181326] border-purple-900/50 text-white'
-            : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+            : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
         }`}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <MascotCompanion
             variant={isYoungKid ? 'heart' : isTeenDark ? 'orb' : 'droplet'}
             size="sm"
             mood="happy"
           />
-          <div>
+          <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-extrabold font-display">
               {isYoungKid
                 ? 'Mis Amigos para Jugar'
-                : 'Amigos, Chat Moderado y Juegos'}
+                : 'Amigos, Chat Moderado y Juegos Multijugador'}
             </h1>
             <p className="text-xs sm:text-sm opacity-75 mt-0.5">
               {isYoungKid
-                ? 'Agrega a tus amigos y juega partidas educativas con ellos.'
-                : 'Solo los amigos aceptados de tu misma etapa pueden jugar juntos y chatear con aprobación de tus padres.'}
+                ? 'Agrega a tus amigos y juega partidas educativas con emojis cuando acepten tu solicitud.'
+                : 'El chat y las invitaciones a partidas solo se habilitan cuando el amigo acepta la solicitud de amistad.'}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {chatEnabledInStage && (
-            <div className="inline-flex p-1 rounded-full bg-black/5 border border-slate-300/30">
+            <div className="inline-flex p-1 rounded-full bg-black/5 dark:bg-white/10 border border-slate-300/30">
               <button
                 type="button"
                 onClick={() => setRightPanelMode('chat')}
@@ -237,31 +256,83 @@ export function FriendsChatView({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Columna Izquierda: Solicitudes, Lista de Amigos y Buscador */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Solicitudes recibidas pendientes */}
+          {/* 1. Enviar Solicitud de Amistad por Nombre o @usuario */}
           <div
             className={`rounded-[32px] border p-6 space-y-4 ${
               isTeenDark
                 ? 'bg-[#181326] border-purple-900/50 text-white'
-                : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
             }`}
           >
-            <div className="flex items-center justify-between">
+            <div>
               <h2 className="font-extrabold text-base">
-                Solicitudes Recibidas ({pendingReceived.length})
+                Agregar Amigo (Enviar Solicitud)
               </h2>
-              <span className="text-xs opacity-65">Aceptación mutua</span>
+              <p className="text-xs opacity-70 mt-0.5">
+                Escribe el nombre o @usuario de tu amigo para enviarle una solicitud de amistad.
+              </p>
             </div>
 
-            {pendingReceived.length === 0 ? (
+            <form
+              onSubmit={handleAddFriendByUsername}
+              data-testid="add-friend-by-username-form"
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={newFriendInput}
+                onChange={(e) => setNewFriendInput(e.target.value)}
+                placeholder="Ej. Mateo o @mateo..."
+                aria-label="Nombre o usuario del amigo"
+                className={`flex-1 h-11 px-3.5 rounded-2xl border text-xs ${
+                  isTeenDark
+                    ? 'bg-[#120E20] border-purple-800/50 text-white'
+                    : 'bg-slate-50 dark:bg-[#120E20] border-slate-200 dark:border-purple-800/50 text-slate-900 dark:text-white'
+                }`}
+              />
+              <button
+                type="submit"
+                data-testid="send-friend-request-btn"
+                className="h-11 px-4 rounded-2xl bg-[#84CC16] hover:bg-[#65A30D] text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+              >
+                <UserPlus className="w-4 h-4" />
+                Enviar Solicitud
+              </button>
+            </form>
+
+            {friendRequestFeedback && (
+              <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs font-semibold">
+                {friendRequestFeedback}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Gestión de Solicitudes Pendientes (Aceptación Obligatoria) */}
+          <div
+            data-testid="pending-requests-section"
+            className={`rounded-[32px] border p-6 space-y-4 ${
+              isTeenDark
+                ? 'bg-[#181326] border-purple-900/50 text-white'
+                : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-extrabold text-base">
+                Solicitudes Pendientes ({allPendingRequests.length})
+              </h2>
+              <span className="text-xs opacity-65">Aceptación obligatoria</span>
+            </div>
+
+            {allPendingRequests.length === 0 ? (
               <p className="text-xs opacity-65 py-1">
                 No tienes solicitudes de amistad pendientes en este momento.
               </p>
             ) : (
               <div className="space-y-3">
-                {pendingReceived.map((req) => (
+                {allPendingRequests.map((req) => (
                   <div
                     key={req.id}
-                    className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3"
+                    className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <AvatarBadge avatarId={req.peerProfile.avatarId} size="sm" />
@@ -270,7 +341,7 @@ export function FriendsChatView({
                           {req.peerProfile.name}
                         </div>
                         <div className="text-xs opacity-75 truncate">
-                          {req.peerProfile.username}
+                          {req.peerProfile.username} · Chat y partidas bloqueados hasta aceptar
                         </div>
                       </div>
                     </div>
@@ -278,6 +349,7 @@ export function FriendsChatView({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
+                        data-testid="accept-pending-request-button"
                         onClick={() => {
                           playRewardSound('correct');
                           onAcceptFriend(req.id);
@@ -290,12 +362,12 @@ export function FriendsChatView({
                         className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-xs font-bold flex items-center gap-1"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        Aceptar
+                        Aceptar Solicitud
                       </button>
                       <button
                         type="button"
                         onClick={() => onRejectFriend(req.id)}
-                        aria-label="Rechazar solicitud"
+                        aria-label="Cancelar o rechazar solicitud"
                         className="p-2 rounded-xl border border-slate-300/40"
                       >
                         <X className="w-4 h-4" />
@@ -307,21 +379,22 @@ export function FriendsChatView({
             )}
           </div>
 
-          {/* Mis Amigos Aceptados */}
+          {/* 3. Mis Amigos Aceptados */}
           <div
+            data-testid="accepted-friends-section"
             className={`rounded-[32px] border p-6 space-y-4 ${
               isTeenDark
                 ? 'bg-[#181326] border-purple-900/50 text-white'
-                : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
             }`}
           >
             <h2 className="font-extrabold text-base">
-              Mis Amigos ({acceptedFriends.length})
+              Mis Amigos Aceptados ({acceptedFriends.length})
             </h2>
 
             {acceptedFriends.length === 0 ? (
               <p className="text-xs opacity-65 py-2 leading-relaxed">
-                Aún no tienes amigos agregados. Envía una solicitud a un compañero de tu misma etapa abajo.
+                Aún no tienes amigos aceptados. Envía una solicitud arriba y acéptala para habilitar el chat y los juegos multijugador.
               </p>
             ) : (
               <div className="space-y-2.5">
@@ -365,18 +438,18 @@ export function FriendsChatView({
             )}
           </div>
 
-          {/* Buscar Compañeros de la Misma Etapa */}
+          {/* 4. Buscar Otros Compañeros Registrados en el Dispositivo */}
           <div
             className={`rounded-[32px] border p-6 space-y-4 ${
               isTeenDark
                 ? 'bg-[#181326] border-purple-900/50 text-white'
-                : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
             }`}
           >
             <div>
-              <h2 className="font-extrabold text-base">Buscar Compañeros</h2>
+              <h2 className="font-extrabold text-base">Buscar Compañeros de Etapa</h2>
               <p className="text-xs opacity-70 mt-0.5">
-                Solo aparecen niños registrados en tu misma etapa.
+                Perfiles registrados en tu misma etapa de edad.
               </p>
             </div>
 
@@ -390,15 +463,15 @@ export function FriendsChatView({
                 className={`w-full h-11 pl-10 pr-4 rounded-2xl border text-xs ${
                   isTeenDark
                     ? 'bg-[#120E20] border-purple-800/50 text-white'
-                    : 'bg-slate-50 border-slate-200 text-slate-900'
+                    : 'bg-slate-50 dark:bg-[#120E20] border-slate-200 dark:border-purple-800/50 text-slate-900 dark:text-white'
                 }`}
               />
             </div>
 
             <div className="space-y-2.5">
-              {availableSameGroupUsers.length === 0 && pendingSent.length === 0 ? (
+              {availableSameGroupUsers.length === 0 ? (
                 <p className="text-xs opacity-65 py-2 leading-relaxed">
-                  No hay otros niños registrados todavía en tu misma etapa. Cuando el padre registre otro perfil de la misma edad, aparecerá aquí.
+                  Puedes usar el recuadro de arriba para enviar una solicitud por nombre o @usuario, o registrar otro perfil de la misma edad.
                 </p>
               ) : (
                 availableSameGroupUsers.map((user) => (
@@ -429,25 +502,6 @@ export function FriendsChatView({
                   </div>
                 ))
               )}
-
-              {pendingSent.map((sent) => (
-                <div
-                  key={sent.id}
-                  className="p-3 rounded-2xl border border-slate-200/40 flex items-center justify-between gap-3 opacity-85"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <AvatarBadge avatarId={sent.peerProfile.avatarId} size="sm" />
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm truncate">
-                        {sent.peerProfile.name}
-                      </div>
-                      <div className="text-xs opacity-70">
-                        Solicitud enviada · Pendiente de aceptación
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         </div>

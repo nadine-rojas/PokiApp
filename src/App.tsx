@@ -19,11 +19,14 @@ import {
   LogOut,
   Trophy,
   Sparkles,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import {
   WALLPAPER_GALLERY,
   COURSES_DATA,
   CourseSubject,
+  getAvatarsForChildAge,
 } from './data/curriculumData';
 import {
   NavTabId,
@@ -51,6 +54,7 @@ import { FriendsChatView, FriendshipRecord } from './components/FriendsChatView'
 import { ProfileParentalView } from './components/ProfileParentalView';
 import { ShopView } from './components/ShopView';
 import { MascotCompanion } from './components/ArtworkRenderer';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 interface StoredFriendship {
   id: string;
@@ -58,6 +62,7 @@ interface StoredFriendship {
   receiverId: string;
   ageGroup: UserProfile['ageGroup'];
   status: 'accepted' | 'pending' | 'blocked';
+  customPeer?: FriendshipRecord['peerProfile'];
   chatMessages: {
     id: string;
     senderId: string;
@@ -70,6 +75,7 @@ interface StoredFriendship {
 const ACCOUNTS_STORAGE_KEY = 'lumiquest_accounts_v2';
 const ACTIVE_USER_STORAGE_KEY = 'lumiquest_active_user_id_v2';
 const FRIENDSHIPS_STORAGE_KEY = 'lumiquest_friendships_v2';
+const THEME_STORAGE_KEY = 'lumiquest_theme_mode_v2';
 
 export default function App() {
   const [accounts, setAccounts] = useState<UserProfile[]>(() => {
@@ -148,6 +154,37 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTabId>('learn');
   const [graduationCelebrationOpen, setGraduationCelebrationOpen] = useState(false);
 
+  const rawProfile = accounts.find((a) => a.id === activeUserId) || null;
+  const currentProfile = rawProfile ? ensureShopDefaultsOnProfile(rawProfile) : null;
+
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {
+      // ignore
+    }
+    return 'light';
+  });
+
+  const isDarkMode = themeMode === 'dark';
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', isDarkMode);
+    }
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    } catch {
+      // ignore
+    }
+  }, [isDarkMode, themeMode]);
+
+  const toggleThemeMode = () => {
+    playRewardSound('pop');
+    setThemeMode((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   useEffect(() => {
     try {
       localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
@@ -178,9 +215,6 @@ export default function App() {
       // ignore
     }
   }, [storedFriendships]);
-
-  const rawProfile = accounts.find((a) => a.id === activeUserId) || null;
-  const currentProfile = rawProfile ? ensureShopDefaultsOnProfile(rawProfile) : null;
 
   const updateCurrentProfile = (updater: (prev: UserProfile) => UserProfile) => {
     if (!currentProfile) return;
@@ -426,7 +460,19 @@ export default function App() {
       const isRequester = sf.requesterId === currentProfile.id;
       const peerId = isRequester ? sf.receiverId : sf.requesterId;
       const peer = accounts.find((a) => a.id === peerId);
-      if (!peer) return null;
+      const resolvedPeerProfile: FriendshipRecord['peerProfile'] | null = peer
+        ? {
+            id: peer.id,
+            username: peer.username,
+            name: peer.name,
+            ageGroup: peer.ageGroup,
+            avatarId: peer.avatarId,
+            xp: peer.xp,
+            streak: peer.streak,
+          }
+        : sf.customPeer || null;
+
+      if (!resolvedPeerProfile) return null;
 
       const statusForCurrent =
         sf.status === 'accepted'
@@ -443,15 +489,7 @@ export default function App() {
         userBId: sf.receiverId,
         ageGroup: sf.ageGroup,
         statusForCurrent,
-        peerProfile: {
-          id: peer.id,
-          username: peer.username,
-          name: peer.name,
-          ageGroup: peer.ageGroup,
-          avatarId: peer.avatarId,
-          xp: peer.xp,
-          streak: peer.streak,
-        },
+        peerProfile: resolvedPeerProfile,
         chatMessages: sf.chatMessages,
       } satisfies FriendshipRecord;
     })
@@ -478,6 +516,63 @@ export default function App() {
         receiverId: targetUserId,
         ageGroup: currentProfile.ageGroup,
         status: 'pending',
+        chatMessages: [],
+      },
+    ]);
+  };
+
+  const handleSendFriendRequestByUsername = (usernameOrName: string) => {
+    const cleanInput = usernameOrName.trim().replace(/^@+/, '');
+    if (!cleanInput) return;
+
+    const existingUser = accounts.find(
+      (a) =>
+        a.id !== currentProfile.id &&
+        a.ageGroup === currentProfile.ageGroup &&
+        (a.username.toLowerCase().replace(/^@+/, '') ===
+          cleanInput.toLowerCase() ||
+          a.name.toLowerCase() === cleanInput.toLowerCase())
+    );
+
+    if (existingUser) {
+      handleSendFriendRequestByUserId(existingUser.id);
+      return;
+    }
+
+    const normalizedHandle = `@${cleanInput
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '') || 'amigo'}`;
+
+    const alreadySent = storedFriendships.some(
+      (sf) =>
+        sf.requesterId === currentProfile.id &&
+        sf.customPeer?.username.toLowerCase() === normalizedHandle
+    );
+    if (alreadySent) return;
+
+    const stageAvatars = getAvatarsForChildAge(currentProfile.age);
+    const chosenAvatar =
+      stageAvatars[(storedFriendships.length + 1) % stageAvatars.length] ||
+      stageAvatars[0];
+    const peerId = `peer_${Date.now()}`;
+
+    setStoredFriendships((prev) => [
+      ...prev,
+      {
+        id: `fr_${Date.now()}`,
+        requesterId: currentProfile.id,
+        receiverId: peerId,
+        ageGroup: currentProfile.ageGroup,
+        status: 'pending',
+        customPeer: {
+          id: peerId,
+          username: normalizedHandle,
+          name: cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1),
+          ageGroup: currentProfile.ageGroup,
+          avatarId: chosenAvatar.id,
+          xp: 120,
+          streak: 2,
+        },
         chatMessages: [],
       },
     ]);
@@ -578,25 +673,25 @@ export default function App() {
   const navItemsForGroup = allowedNavTabs.map((id) => allNavCatalog[id]);
 
   const isYoungKid = currentProfile.ageGroup === '3-6';
-  const isTeenDark = currentProfile.ageGroup === '14-18';
+  const isTeenDark = currentProfile.ageGroup === '14-18' || isDarkMode;
   const routinesVisible = canAccessRoutines(currentProfile.age);
 
   const activeWallpaper =
     WALLPAPER_GALLERY.find((w) => w.id === currentProfile.wallpaperId) ||
     WALLPAPER_GALLERY[0];
 
-  const shellBgClass = isYoungKid
-    ? 'bg-[#FFFDF7] text-slate-900'
-    : isTeenDark
+  const shellBgClass = isDarkMode
     ? 'bg-[#0F0B1A] text-slate-100'
+    : isYoungKid
+    ? 'bg-[#FFFDF7] text-slate-900'
     : canCustomizeWallpaper(currentProfile.age)
     ? `${activeWallpaper.pageBgClass} text-slate-900`
     : 'bg-[#F8FAFC] text-slate-900';
 
-  const headerThemeClass = isYoungKid
-    ? 'bg-[#FFFDF7]/95 border-[#FED7AA] text-slate-900'
-    : isTeenDark
+  const headerThemeClass = isDarkMode
     ? 'bg-[#151024]/95 border-purple-900/50 text-white'
+    : isYoungKid
+    ? 'bg-[#FFFDF7]/95 border-[#FED7AA] text-slate-900'
     : 'bg-white/95 border-slate-200 text-slate-900';
 
   const acceptedFriendsForChess = userFriendships
@@ -609,10 +704,10 @@ export default function App() {
     }));
 
   return (
-    <div className={`min-h-screen flex flex-col ${shellBgClass} pb-28`}>
-      {/* TOP BAR LIMPIA (Sin selectores de grupo; con contador de gemas siempre visible junto al perfil) */}
+    <div className={`min-h-screen w-full max-w-[100vw] overflow-x-hidden flex flex-col transition-colors duration-200 ${shellBgClass} pb-28`}>
+      {/* TOP BAR LIMPIA Y RESPONSIVA (Con botón real Instalar App, racha, XP y contador de gemas junto al perfil) */}
       <header
-        className={`sticky top-0 z-30 backdrop-blur-md border-b px-4 sm:px-8 h-14 flex items-center justify-between gap-4 ${headerThemeClass}`}
+        className={`sticky top-0 z-30 backdrop-blur-md border-b px-3 sm:px-8 h-14 flex items-center justify-between gap-2 sm:gap-4 ${headerThemeClass}`}
       >
         <a
           href="#aprender"
@@ -620,10 +715,10 @@ export default function App() {
             e.preventDefault();
             setActiveTab('learn');
           }}
-          className={`text-xl font-black font-display tracking-tight whitespace-nowrap shrink-0 ${
-            isYoungKid
+          className={`text-lg sm:text-xl font-black font-display tracking-tight whitespace-nowrap shrink-0 ${
+            isYoungKid && !isDarkMode
               ? 'text-[#FF6B6B]'
-              : isTeenDark
+              : isDarkMode
               ? 'text-[#BEF264]'
               : 'text-emerald-600'
           }`}
@@ -632,22 +727,24 @@ export default function App() {
         </a>
 
         {/* Contadores en vivo (Racha y XP) */}
-        <div className="flex items-center gap-2 sm:gap-3 text-xs font-extrabold tabular-nums">
-          <span className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full bg-amber-500/15 text-amber-500">
-            {isTeenDark ? (
+        <div className="hidden md:flex items-center gap-2.5 text-xs font-extrabold tabular-nums">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-500">
+            {isDarkMode ? (
               <Zap className="w-3.5 h-3.5 fill-current" />
             ) : (
               <Flame className="w-3.5 h-3.5 fill-current" />
             )}
             {currentProfile.streak}d
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-500">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-500">
             {currentProfile.xp} XP
           </span>
         </div>
 
-        {/* Contador de Gemas (siempre visible arriba junto al perfil, con acceso directo a la Tienda) + Perfil */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        {/* Botón Real "Instalar App" (PWA) + Contador de Gemas + Perfil */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <PWAInstallButton variant="header" isDark={isDarkMode} />
+
           <button
             type="button"
             data-testid="top-gems-counter"
@@ -656,13 +753,13 @@ export default function App() {
               setActiveTab('shop');
             }}
             title="Ir a la Tienda de Gemas"
-            className={`px-3 py-1.5 rounded-full font-extrabold text-xs flex items-center gap-1.5 border transition-all tabular-nums ${
+            className={`h-10 px-2.5 sm:px-3 rounded-full font-extrabold text-xs flex items-center gap-1.5 border transition-all tabular-nums ${
               currentSafeTab === 'shop'
                 ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-xs'
                 : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-500 hover:bg-cyan-500/25'
             }`}
           >
-            <Gem className="w-3.5 h-3.5" />
+            <Gem className="w-3.5 h-3.5 shrink-0" />
             <span>{currentProfile.gems}</span>
             <span className="hidden sm:inline">Tienda</span>
           </button>
@@ -670,20 +767,22 @@ export default function App() {
           <button
             type="button"
             onClick={handleLogout}
-            className={`px-3.5 py-1.5 text-xs font-extrabold rounded-full transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-              isTeenDark
+            className={`h-10 px-3 sm:px-3.5 text-xs font-extrabold rounded-full transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+              isDarkMode
                 ? 'bg-[#BEF264] text-slate-950 hover:opacity-90'
                 : 'bg-slate-900 text-white hover:bg-slate-800'
             }`}
           >
-            <LogOut className="w-3.5 h-3.5" />
-            {currentProfile.name}
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            <span className="max-w-[78px] sm:max-w-[120px] truncate">
+              {currentProfile.name}
+            </span>
           </button>
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main className="max-w-6xl w-full mx-auto px-4 sm:px-8 py-6 flex-1">
+      {/* CONTENIDO PRINCIPAL (100% Responsive y sin desbordamiento horizontal) */}
+      <main className="max-w-6xl w-full mx-auto px-3 sm:px-8 py-6 flex-1 min-w-0">
         {currentSafeTab === 'learn' && (
           <LearnView
             userName={currentProfile.name}
@@ -766,6 +865,7 @@ export default function App() {
             )}
             friendships={userFriendships}
             onSendFriendRequestByUserId={handleSendFriendRequestByUserId}
+            onSendFriendRequestByUsername={handleSendFriendRequestByUsername}
             onAcceptFriend={handleAcceptFriend}
             onRejectFriend={handleRejectFriend}
             onBlockOrReportFriend={handleBlockOrReportFriend}
@@ -826,15 +926,16 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA INFERIOR FLOTANTE EN FORMA DE PÍLDORA (Sin grupos y con Juegos incluidos) */}
-      <div className="fixed bottom-4 left-0 right-0 z-40 px-4 pointer-events-none flex justify-center">
+      {/* BARRA DE NAVEGACIÓN INFERIOR FLOTANTE CENTRADA (Sin scrollbar interna + Botón de Modo Claro / Modo Oscuro en tiempo real) */}
+      <div className="fixed bottom-3 left-0 right-0 z-40 px-2 sm:px-4 pointer-events-none flex justify-center">
         <nav
           aria-label="Menú inferior de navegación"
-          className={`pointer-events-auto rounded-full px-2.5 sm:px-3.5 py-2 shadow-2xl border-2 flex items-center gap-1 sm:gap-2 overflow-x-auto max-w-full ${
-            isYoungKid
-              ? 'bg-white/95 border-[#FF6B6B]/40 text-slate-900'
-              : isTeenDark
+          data-testid="floating-bottom-nav"
+          className={`pointer-events-auto rounded-full px-1.5 sm:px-3 py-1.5 shadow-2xl border-2 flex items-center justify-center gap-0.5 sm:gap-1.5 overflow-hidden max-w-[calc(100vw-16px)] ${
+            isDarkMode
               ? 'bg-[#1A142D]/95 border-purple-500/40 text-purple-100'
+              : isYoungKid
+              ? 'bg-white/95 border-[#FF6B6B]/40 text-slate-900'
               : 'bg-white/95 border-emerald-200 text-slate-900'
           }`}
         >
@@ -851,23 +952,62 @@ export default function App() {
                   playRewardSound('pop');
                   setActiveTab(item.id);
                 }}
-                className={`min-h-[44px] px-3 sm:px-4 rounded-full flex items-center gap-1.5 sm:gap-2 transition-all shrink-0 ${
+                className={`min-h-[42px] px-2 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 ${
                   active
-                    ? isYoungKid
-                      ? 'bg-[#FF6B6B] text-white font-black shadow-md scale-105'
-                      : isTeenDark
-                      ? 'bg-[#BEF264] text-slate-950 font-black shadow-md scale-105'
-                      : 'bg-[#84CC16] text-slate-950 font-black shadow-md scale-105'
-                    : 'opacity-70 hover:opacity-100 font-bold'
+                    ? isYoungKid && !isDarkMode
+                      ? 'bg-[#FF6B6B] text-white font-black shadow-xs'
+                      : isDarkMode
+                      ? 'bg-[#BEF264] text-slate-950 font-black shadow-xs'
+                      : 'bg-[#84CC16] text-slate-950 font-black shadow-xs'
+                    : 'opacity-75 hover:opacity-100 font-bold'
                 }`}
               >
-                {item.icon}
-                <span className="text-xs sm:text-sm tracking-tight whitespace-nowrap">
+                <span className="shrink-0">{item.icon}</span>
+                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
                   {item.label}
                 </span>
               </button>
             );
           })}
+
+          <div
+            aria-hidden="true"
+            className="w-px h-6 bg-slate-300/50 dark:bg-purple-500/30 mx-0.5 shrink-0"
+          />
+
+          {/* Botón de Modo Claro / Modo Oscuro integrado en la barra inferior flotante */}
+          <button
+            type="button"
+            data-testid="bottom-nav-theme-toggle"
+            onClick={toggleThemeMode}
+            aria-label={
+              isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'
+            }
+            title={
+              isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'
+            }
+            className={`min-h-[42px] px-2.5 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 font-extrabold ${
+              isDarkMode
+                ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+          >
+            {isDarkMode ? (
+              <>
+                <Sun className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
+                  Claro
+                </span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
+                  Oscuro
+                </span>
+              </>
+            )}
+          </button>
         </nav>
       </div>
 

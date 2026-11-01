@@ -143,6 +143,7 @@ const GROUP1_EMOJI_REACTIONS = ['🎉', '😄', '⭐', '👏', '❤️', '🚀']
 const SNAKE_GRID_SIZE = 12;
 
 export function GamesView({
+  userId = 'current_user',
   userName,
   userAvatarId,
   ageGroup,
@@ -1151,103 +1152,129 @@ export function GamesView({
           )}
         </div>
 
-        {/* PANEL LATERAL: TABLA DE POSICIONES EN TIEMPO REAL + CHAT DENTRO DEL JUEGO (O EMOJIS PARA GRUPO 1) */}
+        {/* PANEL LATERAL: TABLA DE POSICIONES MULTIJUGADOR EN TIEMPO REAL + CHAT DENTRO DEL JUEGO (O EMOJIS PARA GRUPO 1) */}
         <aside
           className={`lg:col-span-5 rounded-3xl border p-6 space-y-6 ${
             isTeenDark
               ? 'bg-slate-900 border-slate-800 text-white'
-              : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm'
           }`}
         >
-          {/* 1. Posiciones y Puntajes en Tiempo Real en la Sala */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          {/* 1. Posiciones y Puntajes Multijugador en Tiempo Real en la Sala */}
+          <div className="space-y-3" data-testid="multiplayer-live-scoreboard">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="font-extrabold text-base flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-amber-500" />
-                Posiciones en Sala ({roomCode})
+                Multijugador · Sala {roomCode}
               </h3>
               <span className="text-xs font-bold text-emerald-500">
-                En tiempo real
+                Posiciones en vivo
               </span>
             </div>
 
-            <div className="space-y-2">
-              <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center">
-                    1
-                  </span>
-                  <AvatarBadge avatarId={userAvatarId} size="sm" />
-                  <div>
-                    <div className="font-bold text-sm">{userName} (Tú)</div>
-                    <div className="text-[11px] opacity-75">Conectado en sala</div>
-                  </div>
-                </div>
-                <span className="font-mono font-extrabold text-sm tabular-nums">
-                  {myRoomScore} pts
-                </span>
-              </div>
+            {(() => {
+              const competitors = [
+                {
+                  id: userId,
+                  friendshipId: null as string | null,
+                  name: `${userName} (Tú)`,
+                  avatarId: userAvatarId,
+                  score: myRoomScore,
+                  statusText: 'Conectado en partida',
+                  isMe: true,
+                },
+                ...sameGroupFriends.map((fr, idx) => {
+                  const isInvited = invitedFriendIds.includes(fr.peerProfile.id);
+                  const friendLiveScore = isInvited
+                    ? Math.max(
+                        10,
+                        Math.round(myRoomScore * 0.75) + (idx + 1) * 15
+                      )
+                    : 0;
+                  return {
+                    id: fr.peerProfile.id,
+                    friendshipId: fr.id,
+                    name: fr.peerProfile.name,
+                    avatarId: fr.peerProfile.avatarId,
+                    score: friendLiveScore,
+                    statusText: isInvited
+                      ? 'Compitiendo en tu sala'
+                      : 'Amigo aceptado (invítalo arriba)',
+                    isMe: false,
+                  };
+                }),
+              ].sort((a, b) => b.score - a.score);
 
-              {sameGroupFriends.map((fr, idx) => (
-                <div
-                  key={fr.id}
-                  className="p-3 rounded-2xl border border-slate-200/40 flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-6 h-6 rounded-full bg-slate-500/20 text-xs font-bold flex items-center justify-center shrink-0">
-                      {idx + 2}
-                    </span>
-                    <AvatarBadge avatarId={fr.peerProfile.avatarId} size="sm" />
-                    <div className="min-w-0">
-                      <div className="font-bold text-xs truncate">
-                        {fr.peerProfile.name}
+              return (
+                <div className="space-y-2">
+                  {competitors.map((comp, rankIdx) => (
+                    <div
+                      key={comp.id}
+                      className={`p-3 rounded-2xl border flex items-center justify-between gap-2 ${
+                        comp.isMe
+                          ? 'bg-emerald-500/15 border-emerald-500/40'
+                          : 'border-slate-200/40 dark:border-slate-700/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-black shrink-0 ${
+                            rankIdx === 0
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'bg-slate-500/20'
+                          }`}
+                        >
+                          {rankIdx + 1}.°
+                        </span>
+                        <AvatarBadge avatarId={comp.avatarId} size="sm" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs sm:text-sm truncate">
+                            {comp.name}
+                          </div>
+                          <div className="text-[10px] opacity-70 truncate">
+                            {comp.statusText}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] opacity-70">
-                        {invitedFriendIds.includes(fr.peerProfile.id)
-                          ? 'Jugando en tu sala'
-                          : 'Amigo disponible'}
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono font-extrabold text-xs sm:text-sm tabular-nums">
+                          {comp.score} pts
+                        </span>
+                        {!comp.isMe && comp.friendshipId && onBlockOrReportFriend && (
+                          <>
+                            <button
+                              type="button"
+                              title="Reportar jugador"
+                              onClick={() => {
+                                onBlockOrReportFriend(comp.friendshipId!, 'report');
+                                setChatAlert(
+                                  `Reporte enviado sobre ${comp.name}.`
+                                );
+                              }}
+                              className="p-1.5 rounded-lg bg-amber-500/15 text-amber-500"
+                            >
+                              <Flag className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Bloquear jugador"
+                              onClick={() => {
+                                onBlockOrReportFriend(comp.friendshipId!, 'block');
+                                setChatAlert(`Bloqueaste a ${comp.name}.`);
+                              }}
+                              className="p-1.5 rounded-lg bg-red-500/15 text-red-500"
+                            >
+                              <Ban className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-mono font-bold text-xs tabular-nums">
-                      {fr.peerProfile.xp} XP
-                    </span>
-                    {onBlockOrReportFriend && (
-                      <>
-                        <button
-                          type="button"
-                          title="Reportar jugador"
-                          onClick={() => {
-                            onBlockOrReportFriend(fr.id, 'report');
-                            setChatAlert(
-                              `Reporte enviado sobre ${fr.peerProfile.name}.`
-                            );
-                          }}
-                          className="p-1.5 rounded-lg bg-amber-500/15 text-amber-500"
-                        >
-                          <Flag className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Bloquear jugador"
-                          onClick={() => {
-                            onBlockOrReportFriend(fr.id, 'block');
-                            setChatAlert(
-                              `Bloqueaste a ${fr.peerProfile.name}.`
-                            );
-                          }}
-                          className="p-1.5 rounded-lg bg-red-500/15 text-red-500"
-                        >
-                          <Ban className="w-3 h-3" />
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
 
           {/* 2. Chat Dentro del Juego (7-18 años) o Reacciones con Emojis (3-6 años) */}

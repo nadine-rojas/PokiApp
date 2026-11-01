@@ -19,6 +19,7 @@ import {
   ALL_MEDALS_CATALOG,
   COURSES_DATA,
   SUBJECT_LABELS,
+  getAvatarsForChildAge,
 } from '../data/curriculumData';
 import {
   UserProfile,
@@ -29,6 +30,7 @@ import {
 } from '../utils/educationLogic';
 import { AvatarBadge, CircularProgressRing } from './ArtworkRenderer';
 import { ShopView } from './ShopView';
+import { PWAInstallButton } from './PWAInstallButton';
 import { playRewardSound } from '../utils/soundEffects';
 
 interface ProfileParentalViewProps {
@@ -82,6 +84,10 @@ export function ProfileParentalView({
   const coursesForGroup = COURSES_DATA.filter(
     (c) => c.ageGroup === profile.ageGroup
   );
+  const avatarsForAge = getAvatarsForChildAge(profile.age);
+  const unlockedAvatarsForChild = avatarsForAge.filter(
+    (av) => av.isStarter || profile.unlockedAvatarIds.includes(av.id)
+  );
 
   const handleUnlockParentPanel = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,31 +123,29 @@ export function ProfileParentalView({
 
   return (
     <div className="space-y-8">
-      {/* Cabecera del Perfil con Anillo de Nivel, Acceso a Tienda y Contador de Gemas */}
+      {/* Cabecera del Perfil con Anillo de Nivel, Instalar App, Acceso a Tienda y Contador de Gemas */}
       <section
         className={`rounded-[34px] overflow-hidden border shadow-md ${
           isTeenDark
             ? 'bg-[#181326] border-purple-900/50'
-            : 'bg-white border-slate-200'
+            : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50'
         }`}
       >
         <div
           className={`p-6 sm:p-8 ${
-            isTeenDark
-              ? 'bg-gradient-to-r from-[#2E1065] via-[#1E1B4B] to-[#3B0764] text-white'
-              : wallpaperAllowed
+            wallpaperAllowed
               ? activeWallpaper.headerBgClass
               : 'bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#84CC16] text-white'
           }`}
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-5 min-w-0">
               <AvatarBadge avatarId={profile.avatarId} size="xl" />
-              <div>
+              <div className="min-w-0">
                 <div className="text-xs font-extrabold opacity-90">
-                  {profile.username} · Nivel {levelInfo.level}
+                  {profile.username} · {profile.age} años · Nivel {levelInfo.level}
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-black font-display mt-0.5">
+                <h1 className="text-2xl sm:text-3xl font-black font-display mt-0.5 truncate">
                   {profile.name}
                 </h1>
                 <p className="text-xs sm:text-sm font-semibold opacity-95 mt-1">
@@ -151,15 +155,16 @@ export function ProfileParentalView({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
               <CircularProgressRing
                 percent={levelInfo.progressPercent}
-                size={68}
+                size={64}
                 strokeWidth={7}
                 color="#BEF264"
                 trackColor="rgba(255,255,255,0.25)"
                 label={`Niv ${levelInfo.level}`}
               />
+              <PWAInstallButton variant="profile" />
               <button
                 type="button"
                 onClick={onOpenFullShop}
@@ -185,7 +190,7 @@ export function ProfileParentalView({
           className={`grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x ${
             isTeenDark
               ? 'divide-purple-900/40 bg-[#181326] text-white'
-              : 'divide-slate-200 bg-white text-slate-900'
+              : 'divide-slate-200 dark:divide-purple-900/40 bg-white dark:bg-[#181326] text-slate-900 dark:text-slate-100'
           }`}
         >
           <div className="p-4 sm:p-5">
@@ -228,6 +233,64 @@ export function ProfileParentalView({
         </div>
       </section>
 
+      {/* SELECTOR RÁPIDO DE AVATAR EN EL PERFIL */}
+      <section
+        data-testid="profile-avatar-selector"
+        className={`rounded-[32px] border p-6 sm:p-7 space-y-4 ${
+          isTeenDark
+            ? 'bg-[#181326] border-purple-900/50 text-white'
+            : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-extrabold font-display">
+              Mis Avatares Desbloqueados ({unlockedAvatarsForChild.length})
+            </h2>
+            <p className="text-xs opacity-75">
+              Elige tu avatar activo con un clic o desbloquea más personajes abajo en la Tienda con gemas.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {unlockedAvatarsForChild.map((av) => {
+            const isSelected = profile.avatarId === av.id;
+            return (
+              <button
+                key={av.id}
+                type="button"
+                onClick={() => {
+                  playRewardSound('pop');
+                  onUpdateShopSelection((prev) => ({
+                    ...prev,
+                    avatarId: av.id,
+                  }));
+                }}
+                className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all ${
+                  isSelected
+                    ? 'border-[#84CC16] bg-[#84CC16]/15 shadow-xs'
+                    : 'border-slate-200 dark:border-purple-900/40 hover:border-emerald-400'
+                }`}
+              >
+                <AvatarBadge avatarId={av.id} size="md" />
+                <div className="text-left">
+                  <div className="font-extrabold text-xs flex items-center gap-1">
+                    <span>{av.name}</span>
+                    {isSelected && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    )}
+                  </div>
+                  <div className="text-[11px] opacity-70">
+                    {isSelected ? 'En uso' : 'Cambiar avatar'}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* TIENDA INTEGRADA CON SUS 4 PESTAÑAS (Tableros, Fichas, Entrenadores y Avatares) */}
       <ShopView
         profile={profile}
@@ -236,23 +299,24 @@ export function ProfileParentalView({
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Columna Izquierda: Fondos de Pantalla y Vitrina de Medallas */}
+        {/* Columna Izquierda: Fondos de Pantalla (7 a 18 años) y Vitrina de Medallas */}
         <div className="lg:col-span-6 space-y-6">
           {wallpaperAllowed && (
             <section
+              data-testid="wallpaper-selector-section"
               className={`rounded-[32px] border p-6 sm:p-8 space-y-4 ${
                 isTeenDark
                   ? 'bg-[#181326] border-purple-900/50 text-white'
-                  : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                  : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
               }`}
             >
               <div>
                 <h2 className="text-xl font-extrabold font-display flex items-center gap-2">
                   <Palette className="w-5 h-5 text-emerald-500" />
-                  Fondo de Pantalla del Perfil
+                  Fondos de Pantalla (Exclusivo 7 a 18 años)
                 </h2>
                 <p className="text-xs opacity-70 mt-0.5">
-                  Personaliza los colores de tu perfil.
+                  Personaliza el fondo visual y colores de tu aplicación y perfil ({activeWallpaper.name} activo).
                 </p>
               </div>
 
@@ -263,16 +327,17 @@ export function ProfileParentalView({
                     <button
                       key={wp.id}
                       type="button"
+                      data-testid={`wallpaper-option-${wp.id}`}
                       onClick={() => {
                         playRewardSound('pop');
                         onChangeWallpaper(wp.id);
                       }}
                       className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-center gap-3.5 ${
                         isCurrent
-                          ? 'border-emerald-500 bg-emerald-500/10'
+                          ? 'border-emerald-500 bg-emerald-500/15'
                           : isTeenDark
                           ? 'border-purple-900/40 bg-[#221B35]'
-                          : 'border-slate-200 bg-white'
+                          : 'border-slate-200 dark:border-purple-900/40 bg-white dark:bg-[#221B35]'
                       }`}
                     >
                       <div
