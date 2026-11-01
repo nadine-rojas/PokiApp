@@ -1,0 +1,90 @@
+{
+  "profiles": {
+    "usr_leo_11_ekw": {
+      "id": "usr_leo_11_ekw",
+      "friendCode": "LUMI-7757",
+      "username": "@leo",
+      "name": "Leo",
+      "age": 11,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793570652776
+    },
+    "usr_leialove_10_s3r": {
+      "id": "usr_leialove_10_s3r",
+      "friendCode": "LUMI-5291",
+      "username": "@leia_love",
+      "name": "Leia",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_night_cat_boy",
+      "xp": 495,
+      "streak": 1,
+      "updatedAt": 1793570644104
+    },
+    "usr_valentina_11_kc6": {
+      "id": "usr_valentina_11_kc6",
+      "friendCode": "LUMI-1575",
+      "username": "@valentina",
+      "name": "Valentina",
+      "age": 11,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793570647372
+    },
+    "usr_sofi_5_r2c": {
+      "id": "usr_sofi_5_r2c",
+      "friendCode": "LUMI-8230",
+      "username": "@sofi",
+      "name": "Sofi",
+      "age": 5,
+      "ageGroup": "3-6",
+      "avatarId": "u9_bmo_console",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793570655750
+    }
+  },
+  "friendships": {
+    "fr_usr_leo_11_ekw__usr_valentina_11_kc6": {
+      "id": "fr_usr_leo_11_ekw__usr_valentina_11_kc6",
+      "requesterId": "usr_leo_11_ekw",
+      "receiverId": "usr_valentina_11_kc6",
+      "requesterCode": "LUMI-7757",
+      "receiverCode": "LUMI-1575",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_leo_11_ekw",
+        "friendCode": "LUMI-7757",
+        "username": "@leo",
+        "name": "Leo",
+        "age": 11,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793570652776
+      },
+      "receiverProfile": {
+        "id": "usr_valentina_11_kc6",
+        "friendCode": "LUMI-1575",
+        "username": "@valentina",
+        "name": "Valentina",
+        "age": 11,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793570647372
+      },
+      "chatMessages": [],
+      "updatedAt": 1793570652776
+    }
+  },
+  "rooms": {}
+}

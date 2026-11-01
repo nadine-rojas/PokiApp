@@ -22,7 +22,11 @@ import {
   calculateLevelFromXP,
   moderateChatMessage,
   canUsersChat,
+  generateFriendCode,
+  normalizeFriendCode,
+  getLibraryConfigForAgeGroup,
 } from './educationLogic';
+import { getBooksForAgeGroup } from '../data/curriculumData';
 
 test('createFreshUserAccount initializes a brand new child account completely from zero with starter items for all 4 shop categories', () => {
   const fresh = createFreshUserAccount({
@@ -231,3 +235,47 @@ test('moderateChatMessage blocks inappropriate words and personal data', () => {
   assert.equal(moderateChatMessage('Mi correo es nino@correo.com').allowed, false);
   assert.equal(moderateChatMessage('Llamame al 5551234567').allowed, false);
 });
+
+test('generateFriendCode and normalizeFriendCode assign unique LUMI-XXXX Friend Codes for cross-browser connection', () => {
+  const fresh = createFreshUserAccount({
+    username: 'valeria_11',
+    name: 'Valeria',
+    age: 11,
+  });
+  assert.match(fresh.friendCode, /^LUMI-\d{4}$/);
+  assert.equal(normalizeFriendCode('lumi-4829'), 'LUMI-4829');
+  assert.equal(normalizeFriendCode('4829'), 'LUMI-4829');
+  assert.match(generateFriendCode('seed_test'), /^LUMI-\d{4}$/);
+});
+
+test('Library rules by age: 3-6 has Spanish stories WITH illustrations; 7-13 and 14-18 have English Stories WITHOUT illustrations', () => {
+  const cfg36 = getLibraryConfigForAgeGroup('3-6');
+  assert.equal(cfg36.language, 'es');
+  assert.equal(cfg36.hasIllustrations, true);
+
+  const books36 = getBooksForAgeGroup('3-6');
+  assert.equal(books36.length >= 4, true);
+  assert.equal(
+    books36.every((b) => b.language === 'es' && b.hasIllustrations === true),
+    true
+  );
+
+  const cfg713 = getLibraryConfigForAgeGroup('7-13');
+  assert.equal(cfg713.language, 'en');
+  assert.equal(cfg713.hasIllustrations, false);
+
+  const books713 = getBooksForAgeGroup('7-13');
+  assert.equal(books713.length >= 4, true);
+  assert.equal(
+    books713.every((b) => b.language === 'en' && b.hasIllustrations === false),
+    true
+  );
+
+  const books1418 = getBooksForAgeGroup('14-18');
+  assert.equal(books1418.length >= 4, true);
+  assert.equal(
+    books1418.every((b) => b.language === 'en' && b.hasIllustrations === false),
+    true
+  );
+});
+

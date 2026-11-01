@@ -55,6 +55,10 @@ import { ProfileParentalView } from './components/ProfileParentalView';
 import { ShopView } from './components/ShopView';
 import { MascotCompanion } from './components/ArtworkRenderer';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import {
+  realtimeNetwork,
+  GlobalNetworkState,
+} from './utils/realtimeNetwork';
 
 interface StoredFriendship {
   id: string;
@@ -153,9 +157,41 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<NavTabId>('learn');
   const [graduationCelebrationOpen, setGraduationCelebrationOpen] = useState(false);
+  const [networkState, setNetworkState] = useState<GlobalNetworkState>({
+    profiles: {},
+    friendships: {},
+    rooms: {},
+  });
 
   const rawProfile = accounts.find((a) => a.id === activeUserId) || null;
   const currentProfile = rawProfile ? ensureShopDefaultsOnProfile(rawProfile) : null;
+
+  // Suscripción en tiempo real a la red entre navegadores y dispositivos (WebSocket + MQTT + BroadcastChannel)
+  useEffect(() => {
+    const unsubscribe = realtimeNetwork.subscribe((state) => {
+      setNetworkState({
+        profiles: { ...state.profiles },
+        friendships: { ...state.friendships },
+        rooms: { ...state.rooms },
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  // Sincroniza automáticamente el perfil y Código de Amigo (LUMI-XXXX) en la red global apenas se registra o inicia sesión
+  useEffect(() => {
+    if (currentProfile) {
+      realtimeNetwork.syncUserProfile(currentProfile);
+    }
+  }, [
+    currentProfile?.id,
+    currentProfile?.friendCode,
+    currentProfile?.name,
+    currentProfile?.avatarId,
+    currentProfile?.xp,
+    currentProfile?.streak,
+    currentProfile?.ageGroup,
+  ]);
 
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
     try {
@@ -448,126 +484,224 @@ export default function App() {
     };
   };
 
-  // Construcción de las amistades reales de la misma etapa
-  const userFriendships: FriendshipRecord[] = storedFriendships
-    .filter(
-      (sf) =>
-        sf.ageGroup === currentProfile.ageGroup &&
-        (sf.requesterId === currentProfile.id ||
-          sf.receiverId === currentProfile.id)
-    )
-    .map((sf) => {
-      const isRequester = sf.requesterId === currentProfile.id;
-      const peerId = isRequester ? sf.receiverId : sf.requesterId;
-      const peer = accounts.find((a) => a.id === peerId);
-      const resolvedPeerProfile: FriendshipRecord['peerProfile'] | null = peer
-        ? {
-            id: peer.id,
-            username: peer.username,
-            name: peer.name,
-            ageGroup: peer.ageGroup,
-            avatarId: peer.avatarId,
-            xp: peer.xp,
-            streak: peer.streak,
-          }
-        : sf.customPeer || null;
+  // Combina los perfiles locales con los perfiles sincronizados en tiempo real desde otros navegadores/dispositivos
+  const sameGroupUsersAcrossBrowsers: UserProfile[] = (() => {
+    const map = new Map<string, UserProfile>();
+    accounts
+      .filter((a) => a.ageGroup === currentProfile.ageGroup)
+      .forEach((a) => map.set(a.id, ensureShopDefaultsOnProfile(a)));
 
-      if (!resolvedPeerProfile) return null;
+    Object.values(networkState.profiles)
+      .filter((np) => np.ageGroup === currentProfile.ageGroup)
+      .forEach((np) => {
+        if (!map.has(np.id)) {
+          map.set(
+            np.id,
+            ensureShopDefaultsOnProfile({
+              id: np.id,
+              friendCode: np.friendCode,
+              username: np.username,
+              name: np.name,
+              age: np.age,
+              ageGroup: np.ageGroup,
+              avatarId: np.avatarId,
+              unlockedAvatarIds: [np.avatarId],
+              selectedBoardId: 'board_classic_wood',
+              unlockedBoardIds: ['board_classic_wood'],
+              selectedPiecesId: 'pieces_classic',
+              unlockedPiecesIds: ['pieces_classic'],
+              selectedCoachId: 'coach_kind',
+              unlockedCoachIds: ['coach_kind'],
+              wallpaperId: 'meadow_day',
+              xp: np.xp,
+              chessXp: 0,
+              gems: 0,
+              streak: np.streak,
+              completedLessonIds: [],
+              completedChessLessonIds: [],
+              completedBookIds: [],
+              unlockedMedalIds: [],
+              routines: [],
+              allowedSubjects: [],
+              parentEmail: '',
+              parentPin: '1234',
+              parentalChatApproved: true,
+              parentalFriendsApproved: true,
+            })
+          );
+        }
+      });
+
+    return Array.from(map.values());
+  })();
+
+  // Construcción de las amistades reales combinando la red en tiempo real entre navegadores y el respaldo local
+  const userFriendships: FriendshipRecord[] = (() => {
+    const recordsMap = new Map<string, FriendshipRecord>();
+
+    // 1. Amistades locales de respaldo
+    storedFriendships
+      .filter(
+        (sf) =>
+          sf.ageGroup === currentProfile.ageGroup &&
+          (sf.requesterId === currentProfile.id ||
+            sf.receiverId === currentProfile.id)
+      )
+      .forEach((sf) => {
+        const isRequester = sf.requesterId === currentProfile.id;
+        const peerId = isRequester ? sf.receiverId : sf.requesterId;
+        const peer = sameGroupUsersAcrossBrowsers.find((a) => a.id === peerId);
+        const resolvedPeerProfile: FriendshipRecord['peerProfile'] | null = peer
+          ? {
+              id: peer.id,
+              friendCode: peer.friendCode,
+              username: peer.username,
+              name: peer.name,
+              ageGroup: peer.ageGroup,
+              avatarId: peer.avatarId,
+              xp: peer.xp,
+              streak: peer.streak,
+            }
+          : sf.customPeer || null;
+
+        if (!resolvedPeerProfile) return;
+
+        const statusForCurrent =
+          sf.status === 'accepted'
+            ? 'accepted'
+            : sf.status === 'blocked'
+            ? 'blocked'
+            : isRequester
+            ? 'pending_sent'
+            : 'pending_received';
+
+        recordsMap.set(sf.id, {
+          id: sf.id,
+          userAId: sf.requesterId,
+          userBId: sf.receiverId,
+          ageGroup: sf.ageGroup,
+          statusForCurrent,
+          peerProfile: resolvedPeerProfile,
+          chatMessages: sf.chatMessages,
+        });
+      });
+
+    // 2. Amistades sincronizadas en tiempo real entre navegadores/dispositivos (WebSocket + MQTT)
+    Object.values(networkState.friendships).forEach((nf) => {
+      const isRequester =
+        nf.requesterId === currentProfile.id ||
+        nf.requesterCode?.toUpperCase() ===
+          currentProfile.friendCode.toUpperCase();
+      const isReceiver =
+        nf.receiverId === currentProfile.id ||
+        nf.receiverCode?.toUpperCase() ===
+          currentProfile.friendCode.toUpperCase();
+
+      if (!isRequester && !isReceiver) return;
+
+      const peerPub = isRequester ? nf.receiverProfile : nf.requesterProfile;
+      if (!peerPub) return;
 
       const statusForCurrent =
-        sf.status === 'accepted'
+        nf.status === 'accepted'
           ? 'accepted'
-          : sf.status === 'blocked'
+          : nf.status === 'blocked'
           ? 'blocked'
           : isRequester
           ? 'pending_sent'
           : 'pending_received';
 
-      return {
-        id: sf.id,
-        userAId: sf.requesterId,
-        userBId: sf.receiverId,
-        ageGroup: sf.ageGroup,
+      recordsMap.set(nf.id, {
+        id: nf.id,
+        userAId: nf.requesterId,
+        userBId: nf.receiverId,
+        ageGroup: currentProfile.ageGroup,
         statusForCurrent,
-        peerProfile: resolvedPeerProfile,
-        chatMessages: sf.chatMessages,
-      } satisfies FriendshipRecord;
-    })
-    .filter((item): item is FriendshipRecord => item !== null);
+        peerProfile: {
+          id: peerPub.id,
+          friendCode: peerPub.friendCode,
+          username: peerPub.username,
+          name: peerPub.name,
+          ageGroup: currentProfile.ageGroup,
+          avatarId: peerPub.avatarId,
+          xp: peerPub.xp,
+          streak: peerPub.streak,
+        },
+        chatMessages: nf.chatMessages || [],
+      });
+    });
+
+    return Array.from(recordsMap.values());
+  })();
 
   const handleSendFriendRequestByUserId = (targetUserId: string) => {
-    const targetUser = accounts.find((a) => a.id === targetUserId);
-    if (!targetUser || targetUser.ageGroup !== currentProfile.ageGroup) return;
-
-    const alreadyExists = storedFriendships.some(
-      (sf) =>
-        (sf.requesterId === currentProfile.id &&
-          sf.receiverId === targetUserId) ||
-        (sf.requesterId === targetUserId &&
-          sf.receiverId === currentProfile.id)
+    const targetUser = sameGroupUsersAcrossBrowsers.find(
+      (a) => a.id === targetUserId
     );
-    if (alreadyExists) return;
+    if (!targetUser) return;
 
-    setStoredFriendships((prev) => [
-      ...prev,
-      {
-        id: `fr_${Date.now()}`,
-        requesterId: currentProfile.id,
-        receiverId: targetUserId,
-        ageGroup: currentProfile.ageGroup,
-        status: 'pending',
-        chatMessages: [],
-      },
-    ]);
+    realtimeNetwork
+      .sendFriendRequestOrDirectConnect({
+        requester: currentProfile,
+        targetUserId,
+        targetQuery: targetUser.friendCode || targetUser.username,
+        directConnect: false,
+      })
+      .then(({ friendship, targetProfile }) => {
+        setStoredFriendships((prev) => {
+          const filtered = prev.filter((sf) => sf.id !== friendship.id);
+          return [
+            ...filtered,
+            {
+              id: friendship.id,
+              requesterId: currentProfile.id,
+              receiverId: targetProfile.id,
+              ageGroup: currentProfile.ageGroup,
+              status:
+                friendship.status === 'accepted' ? 'accepted' : 'pending',
+              customPeer: {
+                id: targetProfile.id,
+                friendCode: targetProfile.friendCode,
+                username: targetProfile.username,
+                name: targetProfile.name,
+                ageGroup: currentProfile.ageGroup,
+                avatarId: targetProfile.avatarId,
+                xp: targetProfile.xp,
+                streak: targetProfile.streak,
+              },
+              chatMessages: friendship.chatMessages || [],
+            },
+          ];
+        });
+      });
   };
 
   const handleSendFriendRequestByUsername = (usernameOrName: string) => {
-    const cleanInput = usernameOrName.trim().replace(/^@+/, '');
+    const cleanInput = usernameOrName.trim();
     if (!cleanInput) return;
-
-    const existingUser = accounts.find(
-      (a) =>
-        a.id !== currentProfile.id &&
-        a.ageGroup === currentProfile.ageGroup &&
-        (a.username.toLowerCase().replace(/^@+/, '') ===
-          cleanInput.toLowerCase() ||
-          a.name.toLowerCase() === cleanInput.toLowerCase())
-    );
-
-    if (existingUser) {
-      handleSendFriendRequestByUserId(existingUser.id);
-      return;
-    }
-
-    const normalizedHandle = `@${cleanInput
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '') || 'amigo'}`;
-
-    const alreadySent = storedFriendships.some(
-      (sf) =>
-        sf.requesterId === currentProfile.id &&
-        sf.customPeer?.username.toLowerCase() === normalizedHandle
-    );
-    if (alreadySent) return;
 
     const stageAvatars = getAvatarsForChildAge(currentProfile.age);
     const chosenAvatar =
       stageAvatars[(storedFriendships.length + 1) % stageAvatars.length] ||
       stageAvatars[0];
+    const optimisticId = `fr_opt_${Date.now()}`;
     const peerId = `peer_${Date.now()}`;
 
+    // Actualización optimista inmediata + sincronización en red real (WebSocket / MQTT)
     setStoredFriendships((prev) => [
       ...prev,
       {
-        id: `fr_${Date.now()}`,
+        id: optimisticId,
         requesterId: currentProfile.id,
         receiverId: peerId,
         ageGroup: currentProfile.ageGroup,
         status: 'pending',
         customPeer: {
           id: peerId,
-          username: normalizedHandle,
-          name: cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1),
+          username: cleanInput.startsWith('@')
+            ? cleanInput
+            : `@${cleanInput.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'amigo'}`,
+          name: cleanInput.replace(/^@+/, ''),
           ageGroup: currentProfile.ageGroup,
           avatarId: chosenAvatar.id,
           xp: 120,
@@ -576,6 +710,80 @@ export default function App() {
         chatMessages: [],
       },
     ]);
+
+    realtimeNetwork
+      .sendFriendRequestOrDirectConnect({
+        requester: currentProfile,
+        targetQuery: cleanInput,
+        directConnect: false,
+      })
+      .then(({ friendship, targetProfile }) => {
+        setStoredFriendships((prev) => {
+          const withoutOptimistic = prev.filter(
+            (sf) => sf.id !== optimisticId && sf.id !== friendship.id
+          );
+          return [
+            ...withoutOptimistic,
+            {
+              id: friendship.id,
+              requesterId: friendship.requesterId,
+              receiverId: friendship.receiverId,
+              ageGroup: currentProfile.ageGroup,
+              status:
+                friendship.status === 'accepted' ? 'accepted' : 'pending',
+              customPeer: {
+                id: targetProfile.id,
+                friendCode: targetProfile.friendCode,
+                username: targetProfile.username,
+                name: targetProfile.name,
+                ageGroup: currentProfile.ageGroup,
+                avatarId: targetProfile.avatarId,
+                xp: targetProfile.xp,
+                streak: targetProfile.streak,
+              },
+              chatMessages: friendship.chatMessages || [],
+            },
+          ];
+        });
+      });
+  };
+
+  const handleDirectConnectByFriendCode = (codeOrName: string) => {
+    const cleanInput = codeOrName.trim();
+    if (!cleanInput) return;
+
+    realtimeNetwork
+      .sendFriendRequestOrDirectConnect({
+        requester: currentProfile,
+        targetQuery: cleanInput,
+        directConnect: true,
+      })
+      .then(({ friendship, targetProfile }) => {
+        setStoredFriendships((prev) => {
+          const withoutExisting = prev.filter((sf) => sf.id !== friendship.id);
+          return [
+            ...withoutExisting,
+            {
+              id: friendship.id,
+              requesterId: friendship.requesterId,
+              receiverId: friendship.receiverId,
+              ageGroup: currentProfile.ageGroup,
+              status: 'accepted',
+              customPeer: {
+                id: targetProfile.id,
+                friendCode: targetProfile.friendCode,
+                username: targetProfile.username,
+                name: targetProfile.name,
+                ageGroup: currentProfile.ageGroup,
+                avatarId: targetProfile.avatarId,
+                xp: targetProfile.xp,
+                streak: targetProfile.streak,
+              },
+              chatMessages: friendship.chatMessages || [],
+            },
+          ];
+        });
+      });
   };
 
   const handleAcceptFriend = (friendshipId: string) => {
@@ -584,10 +792,12 @@ export default function App() {
         sf.id === friendshipId ? { ...sf, status: 'accepted' } : sf
       )
     );
+    realtimeNetwork.updateFriendshipStatus(friendshipId, 'accept');
   };
 
   const handleRejectFriend = (friendshipId: string) => {
     setStoredFriendships((prev) => prev.filter((sf) => sf.id !== friendshipId));
+    realtimeNetwork.updateFriendshipStatus(friendshipId, 'reject');
   };
 
   const handleBlockOrReportFriend = (
@@ -600,6 +810,7 @@ export default function App() {
           sf.id === friendshipId ? { ...sf, status: 'blocked' } : sf
         )
       );
+      realtimeNetwork.updateFriendshipStatus(friendshipId, 'block');
     }
   };
 
@@ -621,6 +832,12 @@ export default function App() {
           ],
         };
       })
+    );
+    realtimeNetwork.sendFriendshipChatMessage(
+      friendshipId,
+      currentProfile.id,
+      currentProfile.name,
+      text
     );
   };
 
@@ -846,6 +1063,7 @@ export default function App() {
         {currentSafeTab === 'games' && (
           <GamesView
             userId={currentProfile.id}
+            userFriendCode={currentProfile.friendCode}
             userName={currentProfile.name}
             userAvatarId={currentProfile.avatarId}
             userAge={currentProfile.age}
@@ -860,12 +1078,11 @@ export default function App() {
         {currentSafeTab === 'friends' && (
           <FriendsChatView
             currentUser={currentProfile}
-            sameGroupRegisteredUsers={accounts.filter(
-              (a) => a.ageGroup === currentProfile.ageGroup
-            )}
+            sameGroupRegisteredUsers={sameGroupUsersAcrossBrowsers}
             friendships={userFriendships}
             onSendFriendRequestByUserId={handleSendFriendRequestByUserId}
             onSendFriendRequestByUsername={handleSendFriendRequestByUsername}
+            onDirectConnectByFriendCode={handleDirectConnectByFriendCode}
             onAcceptFriend={handleAcceptFriend}
             onRejectFriend={handleRejectFriend}
             onBlockOrReportFriend={handleBlockOrReportFriend}

@@ -173,3 +173,37 @@ export function speakSpanishText(
     return () => {};
   }
 }
+
+export function speakEnglishText(
+  text: string,
+  onEnd?: () => void
+): () => void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    playRewardSound('pop');
+    if (onEnd) {
+      const timer = setTimeout(onEnd, 1500);
+      return () => clearTimeout(timer);
+    }
+    return () => {};
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    if (onEnd) {
+      utterance.onend = () => onEnd();
+      utterance.onerror = () => onEnd();
+    }
+    window.speechSynthesis.speak(utterance);
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  } catch {
+    if (onEnd) onEnd();
+    return () => {};
+  }
+}
+

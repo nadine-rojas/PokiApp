@@ -47,10 +47,18 @@ export interface Course {
   lessons: LessonItem[];
 }
 
+export interface StoryVocabularyItem {
+  word: string;
+  translationEs: string;
+  phonetic?: string;
+  example?: string;
+}
+
 export interface StoryPage {
   pageNumber: number;
+  chapterTitle?: string;
   text: string;
-  sceneTheme:
+  sceneTheme?:
     | 'dragon_meadow'
     | 'dragon_library'
     | 'dragon_stars'
@@ -59,12 +67,15 @@ export interface StoryPage {
     | 'forest_band'
     | 'finance_market';
   caption: string;
+  vocabulary?: StoryVocabularyItem[];
 }
 
 export interface StoryBook {
   id: string;
   title: string;
   author: string;
+  language: 'es' | 'en';
+  hasIllustrations: boolean;
   recommendedAges: AgeGroup[];
   ageBadge: string;
   durationLabel: string;
@@ -1979,33 +1990,39 @@ export const COURSES_DATA: Course[] = [
 ];
 
 export const STORYBOOKS_DATA: StoryBook[] = [
+  // ========================================================
+  // ETAPA 3 A 6 AÑOS (ESPECIAL 4 A 6 AÑOS - APRENDIENDO A LEER)
+  // Cuentos infantiles en ESPAÑOL CON ILUSTRACIONES Y DIBUJITOS en cada página
+  // ========================================================
   {
     id: 'book-dragon',
     title: 'El Dragón que Aprendió a Leer',
     author: 'Elena Montes',
-    recommendedAges: ['3-6', '7-13'],
-    ageBadge: '3 a 6 años · Lectura Inicial',
-    durationLabel: '3 min · Con narración en voz alta',
+    language: 'es',
+    hasIllustrations: true,
+    recommendedAges: ['3-6'],
+    ageBadge: '3 a 6 años · Español con Dibujitos',
+    durationLabel: '3 min · Ilustrado + Voz en Español',
     xpReward: 40,
     coverTheme: 'dragon',
-    summary: 'Chispita no lanzaba fuego por la boca: ¡lanzaba letras doradas cada vez que abría un cuento!',
+    summary: 'Chispita no lanzaba fuego por la boca: ¡lanzaba letras doradas cada vez que abría un cuento ilustrado!',
     pages: [
       {
         pageNumber: 1,
         sceneTheme: 'dragon_meadow',
-        caption: 'Chispita en el valle de los robles gigantes',
+        caption: 'Ilustración 1: Chispita en el valle de los robles gigantes',
         text: 'En un valle verde vivía Chispita, un pequeño dragón esmeralda con gafas redondas. Mientras otros dragones practicaban rugidos fuertes, Chispita prefería escuchar el canto de los pájaros.',
       },
       {
         pageNumber: 2,
         sceneTheme: 'dragon_library',
-        caption: 'El libro dorado bajo el gran árbol',
+        caption: 'Ilustración 2: El libro dorado bajo el gran árbol',
         text: 'Un día encontró un libro brillante debajo de un roble. Al juntar las letras M y A, leyó en voz alta: "¡MA-GIA!". De pronto, pequeñas estrellas de luz salieron flotando de las páginas.',
       },
       {
         pageNumber: 3,
         sceneTheme: 'dragon_stars',
-        caption: 'Todos los amigos leyendo juntos al atardecer',
+        caption: 'Ilustración 3: Todos los amigos leyendo juntos al atardecer',
         text: 'Chispita invitó a todos los animalitos del bosque a leer con él. Descubrieron que cada palabra nueva abría un mundo de aventuras maravillosas.',
       },
     ],
@@ -2019,23 +2036,25 @@ export const STORYBOOKS_DATA: StoryBook[] = [
     id: 'book-space',
     title: 'Valeria y el Planeta de los Números',
     author: 'Dr. Mateo Solís',
-    recommendedAges: ['3-6', '7-13'],
-    ageBadge: '3 a 10 años · Aventura Espacial',
-    durationLabel: '4 min · Con narración en voz alta',
+    language: 'es',
+    hasIllustrations: true,
+    recommendedAges: ['3-6'],
+    ageBadge: '3 a 6 años · Español con Dibujitos',
+    durationLabel: '4 min · Ilustrado + Voz en Español',
     xpReward: 45,
     coverTheme: 'space',
-    summary: 'Acompaña a la astronauta Valeria a contar los anillos de Saturno y construir puentes estelares.',
+    summary: 'Acompaña a la pequeña astronauta Valeria a contar las lunas de colores y leer carteles estelares.',
     pages: [
       {
         pageNumber: 1,
         sceneTheme: 'space_launch',
-        caption: 'El despegue del cohete Solar-7',
+        caption: 'Ilustración 1: El despegue del cohete Solar-7',
         text: 'Tres, dos, uno... ¡Despegue! Valeria ajustó su casco espacial y miró por la ventana redonda cómo la Tierra brillaba como una canica azul en el espacio.',
       },
       {
         pageNumber: 2,
         sceneTheme: 'space_planets',
-        caption: 'Los anillos musicales de Saturno',
+        caption: 'Ilustración 2: Los anillos musicales de Saturno',
         text: 'Al llegar cerca de Saturno, Valeria contó cinco lunas plateadas que giraban en armonía. Cada luna emitía una nota musical como un piano gigante en el cosmos.',
       },
     ],
@@ -2046,40 +2065,444 @@ export const STORYBOOKS_DATA: StoryBook[] = [
     },
   },
   {
-    id: 'book-forest',
-    title: 'La Sinfonía del Bosque y la Alcancía de Bellotas',
-    author: 'Clara Vivaldi',
-    recommendedAges: ['7-13', '14-18'],
-    ageBadge: '7 a 18 años · Fábula de Música y Ahorro',
-    durationLabel: '5 min · Con narración en voz alta',
-    xpReward: 50,
+    id: 'book-vowels-kitten',
+    title: 'Milo y las Cinco Vocales Cantarinas',
+    author: 'Sofía Alarcón',
+    language: 'es',
+    hasIllustrations: true,
+    recommendedAges: ['3-6'],
+    ageBadge: '4 a 6 años · Español con Dibujitos',
+    durationLabel: '3 min · Ilustrado + Voz en Español',
+    xpReward: 40,
     coverTheme: 'forest',
-    summary: 'Cómo una orquesta de jóvenes músicos del bosque organizó su presupuesto para construir un anfiteatro sostenible.',
+    summary: 'El gatito Milo descubre cómo suenan la A, E, I, O, U siguiendo las huellas de colores en el jardín.',
     pages: [
       {
         pageNumber: 1,
         sceneTheme: 'forest_band',
-        caption: 'Ensayo de la orquesta en el claro otoñal',
-        text: 'Los músicos del bosque soñaban con construir un escenario de madera acústica para su concierto de primavera, pero necesitaban reunir cien monedas de oro.',
+        caption: 'Ilustración 1: Milo encuentra la campana de la letra A y la E',
+        text: 'Milo caminaba por el jardín cuando vio una Abeja amarilla que cantaba "¡A-A-A!" y un Elefante pequeño que tocaba la trompeta diciendo "¡E-E-E!".',
       },
       {
         pageNumber: 2,
-        sceneTheme: 'finance_market',
-        caption: 'El plan de ahorro y emprendimiento comunitario',
-        text: 'Decidieron ofrecer clases de piano y dibujo a los más pequeños y guardar el cincuenta por ciento de cada entrada. En pocas semanas inauguraron el gran teatro del bosque.',
+        sceneTheme: 'dragon_meadow',
+        caption: 'Ilustración 2: La Isla de la I, el Oso de la O y las Uvas de la U',
+        text: 'Junto al río saludó a una Iguana sonriente con la I, abrazó a un Oso bondadoso con la O y compartió dulces Uvas moradas con la U. ¡Ya sabía leer las cinco vocales!',
       },
     ],
     comprehensionQuestion: {
-      question: '¿Cómo lograron financiar la construcción del teatro del bosque?',
+      question: '¿Qué fruta morada compartió Milo al aprender la vocal U?',
+      options: ['Uvas moradas', 'Manzanas verdes', 'Limones amarillos'],
+      correctOption: 'Uvas moradas',
+    },
+  },
+  {
+    id: 'book-syllable-forest',
+    title: 'El Tren de las Sílabas Brillantes',
+    author: 'Lucas Ribera',
+    language: 'es',
+    hasIllustrations: true,
+    recommendedAges: ['3-6'],
+    ageBadge: '4 a 6 años · Español con Dibujitos',
+    durationLabel: '4 min · Ilustrado + Voz en Español',
+    xpReward: 45,
+    coverTheme: 'dragon',
+    summary: 'Un trencito de madera une vagones con MA, PA, SO y LU para formar las primeras palabras completas.',
+    pages: [
+      {
+        pageNumber: 1,
+        sceneTheme: 'dragon_library',
+        caption: 'Ilustración 1: La estación de madera de las sílabas',
+        text: 'Cada mañana, el trencito de colores enganchaba dos vagones con letras grandes. Cuando unió el vagón CA con el vagón SA, sonó la campana y apareció la palabra CASA.',
+      },
+      {
+        pageNumber: 2,
+        sceneTheme: 'dragon_stars',
+        caption: 'Ilustración 2: El puente iluminado de la LUNA',
+        text: 'Por la noche, el maquinista juntó el vagón LU con el vagón NA. Al instante, la LUNA llena iluminó todo el bosque para que los niños leyeran felices antes de dormir.',
+      },
+    ],
+    comprehensionQuestion: {
+      question: '¿Qué palabra se formó cuando el trencito unió los vagones LU y NA?',
+      options: ['LUNA', 'MESA', 'PATO'],
+      correctOption: 'LUNA',
+    },
+  },
+
+  // ========================================================
+  // ETAPAS MAYORES: 7 A 13 AÑOS Y 14 A 18 AÑOS
+  // Cuentos e Historias en INGLÉS (English Stories) SIN DIBUJOS NI ILUSTRACIONES
+  // Formato libro limpio de solo texto con capítulos/páginas y vocabulario traducible al tocar
+  // ========================================================
+  {
+    id: 'en-book-clockwork-tower',
+    title: 'The Mystery of Clockwork Tower',
+    author: 'Arthur Pendelton',
+    language: 'en',
+    hasIllustrations: false,
+    recommendedAges: ['7-13', '14-18'],
+    ageBadge: '7 a 18 años · English Story (Sin Ilustraciones)',
+    durationLabel: '5 min · Clean Text Reader + English Audio',
+    xpReward: 60,
+    coverTheme: 'space',
+    summary: 'Clean text English chapter story: Leo and Maya investigate an ancient brass clock tower whose gears only turn when spoken to in riddles.',
+    pages: [
+      {
+        pageNumber: 1,
+        chapterTitle: 'Chapter 1: The Silent Gears of Oakhaven',
+        caption: 'Reading Practice · Tap any highlighted word below to see its Spanish meaning',
+        text: 'For fifty years, the great brass clock at the center of Oakhaven stood completely silent. Twelve-year-old Leo climbed the spiral staircase carrying a leather notebook and a small brass lantern. Dust covered the massive gears, yet a faint whisper echoed through the chamber whenever the wind blew from the north.',
+        vocabulary: [
+          {
+            word: 'staircase',
+            translationEs: 'escalera',
+            phonetic: '/ˈsteər.keɪs/',
+            example: 'Leo climbed the spiral staircase carefully.',
+          },
+          {
+            word: 'lantern',
+            translationEs: 'linterna / farol',
+            phonetic: '/ˈlæn.tərn/',
+            example: 'He held a small brass lantern in the dark.',
+          },
+          {
+            word: 'gears',
+            translationEs: 'engranajes',
+            phonetic: '/ɡɪərz/',
+            example: 'The massive gears of the clock began to move.',
+          },
+          {
+            word: 'whisper',
+            translationEs: 'susurro',
+            phonetic: '/ˈwɪs.pər/',
+            example: 'A faint whisper echoed through the room.',
+          },
+        ],
+      },
+      {
+        pageNumber: 2,
+        chapterTitle: 'Chapter 2: The Inscription on the Pendulum',
+        caption: 'Reading Practice · Clean Text Edition (No Illustrations)',
+        text: 'Behind the pendulum, Maya discovered a silver plate engraved with four English words: "Knowledge unlocks every hour." When she read the sentence aloud with clear pronunciation, the pendulum swung forward and a chime rang across the entire valley, reminding the townspeople that curiosity never sleeps.',
+        vocabulary: [
+          {
+            word: 'pendulum',
+            translationEs: 'péndulo',
+            phonetic: '/ˈpen.dʒə.ləm/',
+            example: 'The heavy pendulum swung from left to right.',
+          },
+          {
+            word: 'engraved',
+            translationEs: 'grabado / tallado',
+            phonetic: '/ɪnˈɡreɪvd/',
+            example: 'The silver plate was engraved with a message.',
+          },
+          {
+            word: 'knowledge',
+            translationEs: 'conocimiento',
+            phonetic: '/ˈnɒl.ɪdʒ/',
+            example: 'Knowledge unlocks every hour.',
+          },
+          {
+            word: 'curiosity',
+            translationEs: 'curiosidad',
+            phonetic: '/ˌkjʊə.riˈɒs.ə.ti/',
+            example: 'Curiosity helped them solve the mystery.',
+          },
+        ],
+      },
+    ],
+    comprehensionQuestion: {
+      question: 'What was engraved on the silver plate behind the pendulum?',
       options: [
-        'Dando clases de música y arte y ahorrando la mitad de sus ingresos',
-        'Pidiendo un deseo sin trabajar en equipo',
-        'Gastando todas las monedas en dulces el primer día',
+        '"Knowledge unlocks every hour."',
+        '"Gold is hidden under the floor."',
+        '"Never climb the tower at night."',
       ],
-      correctOption: 'Dando clases de música y arte y ahorrando la mitad de sus ingresos',
+      correctOption: '"Knowledge unlocks every hour."',
+    },
+  },
+  {
+    id: 'en-book-northern-stars',
+    title: 'Journey Across the Northern Stars',
+    author: 'Clara Vance',
+    language: 'en',
+    hasIllustrations: false,
+    recommendedAges: ['7-13', '14-18'],
+    ageBadge: '7 a 18 años · English Story (Sin Ilustraciones)',
+    durationLabel: '6 min · Clean Text Reader + English Audio',
+    xpReward: 65,
+    coverTheme: 'dragon',
+    summary: 'Clean text English chapter story: A young navigator uses constellations and mathematics to guide a research vessel through the Arctic night.',
+    pages: [
+      {
+        pageNumber: 1,
+        chapterTitle: 'Chapter 1: Beneath the Aurora',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'The research vessel Polaris glided quietly between floating sheets of silver ice. On the bridge, Elena adjusted her brass compass and looked up at the clear winter sky. Without modern satellites during the magnetic storm, she relied on ancient constellations to calculate their exact latitude.',
+        vocabulary: [
+          {
+            word: 'vessel',
+            translationEs: 'embarcación / navío',
+            phonetic: '/ˈves.əl/',
+            example: 'The research vessel sailed through the cold sea.',
+          },
+          {
+            word: 'compass',
+            translationEs: 'brújula',
+            phonetic: '/ˈkʌm.pəs/',
+            example: 'Elena checked her compass before turning north.',
+          },
+          {
+            word: 'constellations',
+            translationEs: 'constelaciones',
+            phonetic: '/ˌkɒn.stəˈleɪ.ʃənz/',
+            example: 'Ancient constellations guided sailors for centuries.',
+          },
+          {
+            word: 'relied',
+            translationEs: 'confió / dependió',
+            phonetic: '/rɪˈlaɪd/',
+            example: 'She relied on mathematics and the stars.',
+          },
+        ],
+      },
+      {
+        pageNumber: 2,
+        chapterTitle: 'Chapter 2: The Harbor of Lights',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'By measuring the angle of the North Star above the horizon, Elena steered the crew safely toward the sheltered harbor before dawn. The captain praised her perseverance and calm judgment under pressure.',
+        vocabulary: [
+          {
+            word: 'horizon',
+            translationEs: 'horizonte',
+            phonetic: '/həˈraɪ.zən/',
+            example: 'The star shone brightly above the horizon.',
+          },
+          {
+            word: 'harbor',
+            translationEs: 'puerto',
+            phonetic: '/ˈhɑː.bər/',
+            example: 'The ship arrived at the sheltered harbor.',
+          },
+          {
+            word: 'perseverance',
+            translationEs: 'perseverancia / constancia',
+            phonetic: '/ˌpɜː.sɪˈvɪə.rəns/',
+            example: 'Her perseverance saved the expedition.',
+          },
+          {
+            word: 'judgment',
+            translationEs: 'juicio / criterio',
+            phonetic: '/ˈdʒʌdʒ.mənt/',
+            example: 'Good judgment is essential in difficult moments.',
+          },
+        ],
+      },
+    ],
+    comprehensionQuestion: {
+      question: 'How did Elena guide the research vessel during the magnetic storm?',
+      options: [
+        'By measuring the angle of the North Star and reading constellations',
+        'By following a flock of seabirds in the fog',
+        'By waiting three weeks until summer arrived',
+      ],
+      correctOption: 'By measuring the angle of the North Star and reading constellations',
+    },
+  },
+  {
+    id: 'en-book-harbor-inventors',
+    title: 'The Young Inventors of Harbor Street',
+    author: 'Marcus Sterling',
+    language: 'en',
+    hasIllustrations: false,
+    recommendedAges: ['7-13', '14-18'],
+    ageBadge: '7 a 18 años · English Story (Sin Ilustraciones)',
+    durationLabel: '6 min · Clean Text Reader + English Audio',
+    xpReward: 65,
+    coverTheme: 'forest',
+    summary: 'Clean text English chapter story: Three friends turn a small garage workshop into a clean-energy enterprise that powers their neighborhood library.',
+    pages: [
+      {
+        pageNumber: 1,
+        chapterTitle: 'Chapter 1: A Blueprint on the Chalkboard',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'Every afternoon after school, Samuel, Nora, and Tariq met in a brick workshop on Harbor Street. They sketched a detailed blueprint for a wind turbine made from recycled aluminum bicycles. Although their budget was tiny, they kept careful financial records of every bolt and copper wire.',
+        vocabulary: [
+          {
+            word: 'workshop',
+            translationEs: 'taller',
+            phonetic: '/ˈwɜːk.ʃɒp/',
+            example: 'They built the prototype inside the workshop.',
+          },
+          {
+            word: 'blueprint',
+            translationEs: 'plano / diseño técnico',
+            phonetic: '/ˈbluː.prɪnt/',
+            example: 'Nora drew a precise blueprint on the board.',
+          },
+          {
+            word: 'budget',
+            translationEs: 'presupuesto',
+            phonetic: '/ˈbʌdʒ.ɪt/',
+            example: 'They managed their small budget wisely.',
+          },
+          {
+            word: 'recycled',
+            translationEs: 'reciclado',
+            phonetic: '/ˌriːˈsaɪ.kəld/',
+            example: 'They used recycled aluminum parts.',
+          },
+        ],
+      },
+      {
+        pageNumber: 2,
+        chapterTitle: 'Chapter 2: Powering the Community',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'When the coastal breeze spun the blades for the first time, the reading lamps inside the neighborhood library glowed with steady light. Local shopkeepers were so impressed by their enterprise that they funded three more turbines for the town square.',
+        vocabulary: [
+          {
+            word: 'breeze',
+            translationEs: 'brisa',
+            phonetic: '/briːz/',
+            example: 'A strong coastal breeze turned the turbine.',
+          },
+          {
+            word: 'steady',
+            translationEs: 'constante / estable',
+            phonetic: '/ˈsted.i/',
+            example: 'The lamps produced a steady warm light.',
+          },
+          {
+            word: 'enterprise',
+            translationEs: 'emprendimiento / iniciativa',
+            phonetic: '/ˈen.tə.praɪz/',
+            example: 'Their student enterprise inspired the whole town.',
+          },
+          {
+            word: 'funded',
+            translationEs: 'financiaron / patrocinaron',
+            phonetic: '/ˈfʌn.dɪd/',
+            example: 'Neighbors funded three additional turbines.',
+          },
+        ],
+      },
+    ],
+    comprehensionQuestion: {
+      question: 'What did the young inventors build using recycled aluminum parts?',
+      options: [
+        'A wind turbine that powered the neighborhood library',
+        'A submarine for deep ocean exploration',
+        'A steam locomotive for the city railway',
+      ],
+      correctOption: 'A wind turbine that powered the neighborhood library',
+    },
+  },
+  {
+    id: 'en-book-ravenwood-algorithm',
+    title: 'The Secret Algorithm of Ravenwood',
+    author: 'Dr. Hannah Brooks',
+    language: 'en',
+    hasIllustrations: false,
+    recommendedAges: ['7-13', '14-18'],
+    ageBadge: '10 a 18 años · English Story (Sin Ilustraciones)',
+    durationLabel: '7 min · Clean Text Reader + English Audio',
+    xpReward: 70,
+    coverTheme: 'space',
+    summary: 'Clean text English chapter story: A student chess champion discovers a notebook of logical patterns that connects music, cryptography, and strategy.',
+    pages: [
+      {
+        pageNumber: 1,
+        chapterTitle: 'Chapter 1: Patterns on the Chessboard',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'During the regional chess tournament at Ravenwood Academy, sixteen-year-old Daniel noticed an unusual sequence of moves in his opponent’s opening strategy. Each knight jump mirrored the rhythm of a classical piano sonata, creating a strong defensive fortress across the center squares.',
+        vocabulary: [
+          {
+            word: 'tournament',
+            translationEs: 'torneo',
+            phonetic: '/ˈtʊə.nə.mənt/',
+            example: 'Daniel competed in the regional chess tournament.',
+          },
+          {
+            word: 'sequence',
+            translationEs: 'secuencia',
+            phonetic: '/ˈsiː.kwəns/',
+            example: 'He analyzed the sequence of moves carefully.',
+          },
+          {
+            word: 'rhythm',
+            translationEs: 'ritmo',
+            phonetic: '/ˈrɪð.əm/',
+            example: 'The moves followed the rhythm of a sonata.',
+          },
+          {
+            word: 'fortress',
+            translationEs: 'fortaleza',
+            phonetic: '/ˈfɔː.trəs/',
+            example: 'The pawns formed an unbreakable fortress.',
+          },
+        ],
+      },
+      {
+        pageNumber: 2,
+        chapterTitle: 'Chapter 2: Thinking Three Moves Ahead',
+        caption: 'English Reading Comprehension · Text-Only Format',
+        text: 'Instead of rushing into a reckless attack, Daniel remained patient and calculated three moves ahead. By sacrificing a bishop to open the seventh rank, he achieved checkmate and learned that discipline is stronger than haste.',
+        vocabulary: [
+          {
+            word: 'reckless',
+            translationEs: 'imprudente / precipitado',
+            phonetic: '/ˈrek.ləs/',
+            example: 'He avoided making a reckless move.',
+          },
+          {
+            word: 'calculated',
+            translationEs: 'calculó',
+            phonetic: '/ˈkæl.kjə.leɪ.tɪd/',
+            example: 'Daniel calculated three moves ahead.',
+          },
+          {
+            word: 'achieved',
+            translationEs: 'logró / alcanzó',
+            phonetic: '/əˈtʃiːvd/',
+            example: 'He achieved victory through patience.',
+          },
+          {
+            word: 'haste',
+            translationEs: 'prisa / apresuramiento',
+            phonetic: '/heɪst/',
+            example: 'Discipline is always stronger than haste.',
+          },
+        ],
+      },
+    ],
+    comprehensionQuestion: {
+      question: 'What lesson did Daniel learn during the chess tournament at Ravenwood Academy?',
+      options: [
+        'That patience and discipline are stronger than haste',
+        'That attacking without a plan always wins quickly',
+        'That knights should never leave the back rank',
+      ],
+      correctOption: 'That patience and discipline are stronger than haste',
     },
   },
 ];
+
+/**
+ * Devuelve los libros correspondientes a la edad del usuario:
+ * - 3 a 6 años: Cuentos infantiles en español CON ilustraciones y dibujitos (nunca 0).
+ * - 7 a 13 y 14 a 18 años: Cuentos e historias en inglés SIN ilustraciones ni dibujitos (nunca 0).
+ */
+export function getBooksForAgeGroup(ageGroup: AgeGroup): StoryBook[] {
+  if (ageGroup === '3-6') {
+    return STORYBOOKS_DATA.filter(
+      (b) => b.language === 'es' && b.hasIllustrations
+    );
+  }
+  return STORYBOOKS_DATA.filter(
+    (b) => b.language === 'en' && !b.hasIllustrations
+  );
+}
 
 export const ALL_MEDALS_CATALOG: MedalCatalogItem[] = [
   {

@@ -31,9 +31,14 @@ import {
 import { AvatarBadge } from './ArtworkRenderer';
 import { playRewardSound } from '../utils/soundEffects';
 import { FriendshipRecord } from './FriendsChatView';
+import {
+  realtimeNetwork,
+  NetworkRoomPlayer,
+} from '../utils/realtimeNetwork';
 
 interface GamesViewProps {
   userId?: string;
+  userFriendCode?: string;
   userName: string;
   userAvatarId: string;
   userAge?: number;
@@ -144,6 +149,7 @@ const SNAKE_GRID_SIZE = 12;
 
 export function GamesView({
   userId = 'current_user',
+  userFriendCode = 'LUMI-1000',
   userName,
   userAvatarId,
   ageGroup,
@@ -160,17 +166,67 @@ export function GamesView({
   const [myRoomScore, setMyRoomScore] = useState(0);
   const [rewardNotice, setRewardNotice] = useState<string | null>(null);
 
-  // Sala Multijugador & Invitar a un Amigo
+  // Sala Multijugador & Invitar a un Amigo (Sincronizada entre navegadores vía WebSocket/MQTT)
   const [roomCode, setRoomCode] = useState('SALA-482');
   const [joinCodeDraft, setJoinCodeDraft] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [invitedFriendIds, setInvitedFriendIds] = useState<string[]>([]);
+  const [remoteRoomPlayers, setRemoteRoomPlayers] = useState<
+    Record<string, NetworkRoomPlayer>
+  >({});
 
   // Chat dentro del juego / Emojis (Grupo 1)
   const [roomMessages, setRoomMessages] = useState<RoomChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [chatAlert, setChatAlert] = useState<string | null>(null);
+
+  // Sincronización en tiempo real de la Sala Multijugador entre distintos navegadores/dispositivos
+  useEffect(() => {
+    const unsubscribe = realtimeNetwork.subscribe((netState) => {
+      const activeRoom = netState.rooms[roomCode.toUpperCase()];
+      if (activeRoom) {
+        setRemoteRoomPlayers(activeRoom.players || {});
+        if (Array.isArray(activeRoom.messages)) {
+          setRoomMessages(
+            activeRoom.messages.map((m) => ({
+              id: m.id,
+              senderName: m.senderName,
+              text: m.text,
+              isEmojiOnly: m.isEmojiOnly,
+              timestamp: m.timestamp,
+            }))
+          );
+        }
+      }
+    });
+    return unsubscribe;
+  }, [roomCode]);
+
+  useEffect(() => {
+    realtimeNetwork.syncMultiplayerRoom({
+      roomCode,
+      player: {
+        id: userId,
+        friendCode: userFriendCode,
+        name: userName,
+        avatarId: userAvatarId,
+        ageGroup,
+        score: myRoomScore,
+        gameId: activeGame,
+        updatedAt: Date.now(),
+      },
+    });
+  }, [
+    roomCode,
+    userId,
+    userFriendCode,
+    userName,
+    userAvatarId,
+    ageGroup,
+    myRoomScore,
+    activeGame,
+  ]);
 
   // ====================================================
   // JUEGO 1: SERPIENTES (SNAKE)
@@ -431,16 +487,22 @@ export function GamesView({
 
   const handleSendEmojiReaction = (emoji: string) => {
     playRewardSound('pop');
-    setRoomMessages((prev) => [
-      ...prev,
-      {
-        id: `em_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-        senderName: userName,
-        text: emoji,
-        isEmojiOnly: true,
-        timestamp: 'Ahora',
-      },
-    ]);
+    const msg = {
+      id: `em_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      senderId: userId,
+      senderName: userName,
+      text: emoji,
+      isEmojiOnly: true,
+      timestamp: new Date().toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+    setRoomMessages((prev) => [...prev, msg]);
+    realtimeNetwork.syncMultiplayerRoom({
+      roomCode,
+      message: msg,
+    });
   };
 
   const handleSendInGameChat = (e: React.FormEvent) => {
@@ -450,13 +512,6 @@ export function GamesView({
       playRewardSound('wrong');
       setChatAlert(
         'El padre o tutor ha desactivado el chat desde el Panel de Padres con PIN.'
-      );
-      return;
-    }
-    if (sameGroupFriends.length === 0) {
-      playRewardSound('wrong');
-      setChatAlert(
-        'Invita o acepta primero a un amigo de tu misma etapa para chatear en la sala.'
       );
       return;
     }
@@ -470,15 +525,21 @@ export function GamesView({
 
     playRewardSound('pop');
     setChatAlert(null);
-    setRoomMessages((prev) => [
-      ...prev,
-      {
-        id: `chat_${Date.now()}`,
-        senderName: userName,
-        text: mod.sanitizedText,
-        timestamp: 'Ahora',
-      },
-    ]);
+    const msg = {
+      id: `chat_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      senderId: userId,
+      senderName: userName,
+      text: mod.sanitizedText,
+      timestamp: new Date().toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+    setRoomMessages((prev) => [...prev, msg]);
+    realtimeNetwork.syncMultiplayerRoom({
+      roomCode,
+      message: msg,
+    });
     setChatDraft('');
   };
 
@@ -1173,6 +1234,59 @@ export function GamesView({
             </div>
 
             {(() => {
+              const liveRemotePeers = Object.values(remoteRoomPlayers).filter(
+                (rp) => rp.id !== userId
+              );
+
+              const friendCompetitors = sameGroupFriends.map((fr, idx) => {
+                const liveInRoom = liveRemotePeers.find(
+                  (rp) =>
+                    rp.id === fr.peerProfile.id ||
+                    (fr.peerProfile.friendCode &&
+                      rp.friendCode?.toUpperCase() ===
+                        fr.peerProfile.friendCode.toUpperCase())
+                );
+                const isInvited =
+                  invitedFriendIds.includes(fr.peerProfile.id) ||
+                  Boolean(liveInRoom);
+                const friendLiveScore = liveInRoom
+                  ? liveInRoom.score
+                  : isInvited
+                  ? Math.max(
+                      10,
+                      Math.round(myRoomScore * 0.75) + (idx + 1) * 15
+                    )
+                  : 0;
+                return {
+                  id: fr.peerProfile.id,
+                  friendshipId: fr.id as string | null,
+                  name: fr.peerProfile.name,
+                  avatarId: fr.peerProfile.avatarId,
+                  score: friendLiveScore,
+                  statusText: liveInRoom
+                    ? `Conectado en vivo (${liveInRoom.friendCode})`
+                    : isInvited
+                    ? 'Compitiendo en tu sala'
+                    : 'Amigo aceptado (invítalo arriba)',
+                  isMe: false,
+                };
+              });
+
+              const extraRoomCompetitors = liveRemotePeers
+                .filter(
+                  (rp) =>
+                    !friendCompetitors.some((fc) => fc.id === rp.id)
+                )
+                .map((rp) => ({
+                  id: rp.id,
+                  friendshipId: null as string | null,
+                  name: rp.name,
+                  avatarId: rp.avatarId,
+                  score: rp.score,
+                  statusText: `En sala en vivo (${rp.friendCode})`,
+                  isMe: false,
+                }));
+
               const competitors = [
                 {
                   id: userId,
@@ -1180,29 +1294,11 @@ export function GamesView({
                   name: `${userName} (Tú)`,
                   avatarId: userAvatarId,
                   score: myRoomScore,
-                  statusText: 'Conectado en partida',
+                  statusText: `Conectado en partida (${userFriendCode})`,
                   isMe: true,
                 },
-                ...sameGroupFriends.map((fr, idx) => {
-                  const isInvited = invitedFriendIds.includes(fr.peerProfile.id);
-                  const friendLiveScore = isInvited
-                    ? Math.max(
-                        10,
-                        Math.round(myRoomScore * 0.75) + (idx + 1) * 15
-                      )
-                    : 0;
-                  return {
-                    id: fr.peerProfile.id,
-                    friendshipId: fr.id,
-                    name: fr.peerProfile.name,
-                    avatarId: fr.peerProfile.avatarId,
-                    score: friendLiveScore,
-                    statusText: isInvited
-                      ? 'Compitiendo en tu sala'
-                      : 'Amigo aceptado (invítalo arriba)',
-                    isMe: false,
-                  };
-                }),
+                ...friendCompetitors,
+                ...extraRoomCompetitors,
               ].sort((a, b) => b.score - a.score);
 
               return (

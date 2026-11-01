@@ -32,6 +32,7 @@ import {
   PRAYERS_COLLECTION,
   ROSARY_MYSTERIES,
   RosaryMysteryGroup,
+  getBooksForAgeGroup,
 } from '../data/curriculumData';
 import {
   AgeGroup,
@@ -445,6 +446,8 @@ export function LearnView({
     );
   }
 
+  const availableStageBooks = getBooksForAgeGroup(ageGroup);
+
   // Si en las etapas 7-13 o 14-18 el usuario abrió la Biblioteca integrada dentro de "Aprender"
   if (!isYoungKid && subView === 'library') {
     return (
@@ -463,7 +466,7 @@ export function LearnView({
               onClick={() => setSubView('library')}
               className="px-5 py-2 rounded-full text-xs font-extrabold bg-[#84CC16] text-slate-950 shadow-xs"
             >
-              Biblioteca de Libros
+              Biblioteca · English Stories ({availableStageBooks.length})
             </button>
           </div>
         </div>
@@ -521,6 +524,7 @@ export function LearnView({
             </button>
             <button
               type="button"
+              data-testid="learn-open-library-tab"
               onClick={() => {
                 playRewardSound('pop');
                 setSubView('library');
@@ -528,7 +532,7 @@ export function LearnView({
               className="px-5 py-2 rounded-full text-xs font-extrabold opacity-80 hover:opacity-100 flex items-center gap-1.5"
             >
               <BookOpen className="w-3.5 h-3.5" />
-              Biblioteca de Libros ({completedBookIds.length})
+              Biblioteca · English Stories ({availableStageBooks.length})
             </button>
           </div>
         </div>
@@ -1229,29 +1233,39 @@ export function LearnView({
         </aside>
       </div>
 
-      {/* BIBLIOTECA INTEGRADA EN LA PÁGINA PARA ETAPA 1 (3 A 6 AÑOS) */}
-      {isYoungKid && (
-        <section
-          data-testid="integrated-library-section"
-          className="pt-4 space-y-4"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-            <div>
-              <span className="text-xs font-black text-[#FF6B6B]">
-                Biblioteca Integrada · Etapa Inicial (3 a 6 años)
-              </span>
-              <h2 className="text-2xl font-black font-display text-slate-900 dark:text-white">
-                Libros Interactivos Ilustrados para Practicar la Lectura
-              </h2>
-            </div>
+      {/* BIBLIOTECA INTEGRADA EN LA PÁGINA SEGÚN LA EDAD:
+          - 3 a 6 años: Cuentos infantiles en Español CON ilustraciones y dibujitos
+          - 7 a 13 y 14 a 18 años: Cuentos e Historias en Inglés SIN ilustraciones ni dibujitos */}
+      <section
+        data-testid="integrated-library-section"
+        className="pt-4 space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+          <div>
+            <span
+              className={`text-xs font-black ${
+                isYoungKid
+                  ? 'text-[#FF6B6B]'
+                  : 'text-emerald-600 dark:text-[#BEF264]'
+              }`}
+            >
+              {isYoungKid
+                ? `Biblioteca Integrada · Etapa Inicial (3 a 6 años) · ${availableStageBooks.length} Cuentos Ilustrados`
+                : `Biblioteca de Lectura en Inglés · (${ageGroup} años) · ${availableStageBooks.length} English Stories`}
+            </span>
+            <h2 className="text-2xl font-black font-display text-slate-900 dark:text-white">
+              {isYoungKid
+                ? 'Cuentos Infantiles en Español con Ilustraciones y Dibujitos'
+                : 'English Stories · Cuentos en Inglés (Formato Libro sin Ilustraciones)'}
+            </h2>
           </div>
-          <LibraryView
-            ageGroup={ageGroup}
-            completedBookIds={completedBookIds}
-            onCompleteBook={onCompleteBook}
-          />
-        </section>
-      )}
+        </div>
+        <LibraryView
+          ageGroup={ageGroup}
+          completedBookIds={completedBookIds}
+          onCompleteBook={onCompleteBook}
+        />
+      </section>
 
       {/* MODAL DE LECCIÓN INTERACTIVA */}
       {activeLesson && (

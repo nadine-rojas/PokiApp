@@ -37,6 +37,7 @@ export interface RoutineItem {
 
 export interface UserProfile {
   id: string;
+  friendCode: string;
   username: string;
   name: string;
   age: number;
@@ -170,6 +171,72 @@ export function getNavigationTabsForAgeGroup(
 }
 
 /**
+ * Genera un Código de Amigo único formato LUMI-XXXX (ej. LUMI-4829) para conectar
+ * usuarios entre distintos navegadores y dispositivos en tiempo real.
+ */
+export function generateFriendCode(seed?: string): string {
+  if (seed && seed.trim().length > 0) {
+    let hash = 2166136261;
+    const text = seed.trim().toLowerCase();
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    const digits = 1000 + (Math.abs(hash) % 9000);
+    return `LUMI-${digits}`;
+  }
+  const randomDigits = Math.floor(1000 + Math.random() * 9000);
+  return `LUMI-${randomDigits}`;
+}
+
+/**
+ * Normaliza un código de amigo ingresado por el usuario (ej. "4829", "lumi4829", "lumi-4829" -> "LUMI-4829").
+ */
+export function normalizeFriendCode(rawInput: string): string {
+  const cleaned = rawInput.trim().toUpperCase().replace(/\s+/g, '');
+  const digitsMatch = cleaned.match(/(\d{4})$/);
+  if (digitsMatch && (cleaned.startsWith('LUMI') || /^\d{4}$/.test(cleaned))) {
+    return `LUMI-${digitsMatch[1]}`;
+  }
+  return cleaned;
+}
+
+/**
+ * Regla de la Biblioteca de Cuentos según la edad:
+ * - Menores de 3 a 6 años (Aprendiendo a leer): Cuentos infantiles en español CON ilustraciones y dibujitos.
+ * - Mayores (7 a 13 y 14 a 18 años): Cuentos e historias en inglés (English Stories) SIN dibujos ni ilustraciones.
+ */
+export function getLibraryConfigForAgeGroup(ageGroup: AgeGroup): {
+  language: 'es' | 'en';
+  hasIllustrations: boolean;
+  badgeText: string;
+  headingText: string;
+  subtitleText: string;
+} {
+  if (ageGroup === '3-6') {
+    return {
+      language: 'es',
+      hasIllustrations: true,
+      badgeText: 'Biblioteca Infantil Ilustrada · Español con Dibujitos y Voz (3 a 6 años)',
+      headingText: 'Cuentos Infantiles en Español con Ilustraciones',
+      subtitleText:
+        'Cuentos en español con ilustraciones y dibujitos en cada página, letra grande y narración en voz alta para aprender a leer visualmente.',
+    };
+  }
+  return {
+    language: 'en',
+    hasIllustrations: false,
+    badgeText:
+      ageGroup === '7-13'
+        ? 'English Reading Library · Cuentos en Inglés sin Ilustraciones (7 a 13 años)'
+        : 'Advanced English Stories · Lectura en Inglés sin Ilustraciones (14 a 18 años)',
+    headingText: 'English Stories · Cuentos e Historias en Inglés',
+    subtitleText:
+      'Formato libro de lectura limpio (solo texto, sin dibujitos), dividido por capítulos/páginas, con audio en inglés y traducción instantánea de vocabulario clave al tocar.',
+  };
+}
+
+/**
  * Crea el perfil de un hijo registrado por su padre/tutor completamente desde cero:
  * 0 XP, nivel 1, racha 0, 0 gemas, sin medallas, sin amigos, sin rutinas, sin progreso previo
  * y con 1 artículo básico gratis de cada tipo en la tienda (tablero, fichas, entrenador y avatar).
@@ -179,6 +246,7 @@ export function createFreshUserAccount(params: {
   name: string;
   age: number;
   avatarId?: string;
+  friendCode?: string;
   parentEmail?: string;
   parentPin?: string;
   parentAuthMethod?: 'email' | 'google' | 'apple';
@@ -195,9 +263,14 @@ export function createFreshUserAccount(params: {
     params.parentPin && /^\d{4}$/.test(params.parentPin.trim())
       ? params.parentPin.trim()
       : '1234';
+  const generatedId = `usr_${cleanUsername.replace(/[^a-z0-9]/g, '')}_${safeAge}_${Date.now().toString(36).slice(-3)}`;
+  const friendCode = params.friendCode
+    ? normalizeFriendCode(params.friendCode)
+    : generateFriendCode(`${cleanUsername}_${params.name.trim()}_${safeAge}`);
 
   return {
-    id: `usr_${cleanUsername.replace(/[^a-z0-9]/g, '')}_${safeAge}_${Date.now().toString(36).slice(-3)}`,
+    id: generatedId,
+    friendCode,
     username: cleanUsername,
     name: params.name.trim(),
     age: safeAge,
@@ -237,15 +310,20 @@ export function createFreshUserAccount(params: {
 }
 
 /**
- * Normaliza perfiles guardados en versiones previas para asegurar que tengan los campos de la tienda.
+ * Normaliza perfiles guardados en versiones previas para asegurar que tengan los campos de la tienda y su Código de Amigo.
  */
 export function ensureShopDefaultsOnProfile(profile: UserProfile): UserProfile {
   const defaultBoard = profile.selectedBoardId || 'board_classic_wood';
   const defaultPieces = profile.selectedPiecesId || 'pieces_classic';
   const defaultCoach = profile.selectedCoachId || 'coach_kind';
+  const friendCode =
+    profile.friendCode && profile.friendCode.startsWith('LUMI-')
+      ? profile.friendCode
+      : generateFriendCode(`${profile.username}_${profile.name}_${profile.age}`);
 
   return {
     ...profile,
+    friendCode,
     selectedBoardId: defaultBoard,
     unlockedBoardIds:
       Array.isArray(profile.unlockedBoardIds) && profile.unlockedBoardIds.length > 0
