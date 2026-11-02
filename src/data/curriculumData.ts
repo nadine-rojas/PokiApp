@@ -7,7 +7,8 @@ export type ExerciseType =
   | 'syllable_builder'
   | 'piano_melody'
   | 'drawing_studio'
-  | 'dictation_fill';
+  | 'dictation_fill'
+  | 'chess_puzzle';
 
 export interface LessonExercise {
   id: string;
@@ -19,6 +20,14 @@ export interface LessonExercise {
   correctAnswer?: string;
   hint: string;
   targetNotes?: string[];
+  chessPuzzle?: {
+    initialFen: string;
+    objectiveText: string;
+    targetMoveSan: string[];
+    fromSquareHint: string;
+    toSquareHint: string;
+    explanation: string;
+  };
   drawingSteps?: {
     stepNumber: number;
     title: string;
@@ -167,7 +176,7 @@ export interface MedalCatalogItem {
   title: string;
   description: string;
   requirementText: string;
-  category: 'general' | 'orthography' | 'chess' | 'prayer' | 'routines';
+  category: 'general' | 'orthography' | 'chess' | 'prayer';
   iconName: 'flame' | 'book' | 'music' | 'palette' | 'coins' | 'trophy' | 'sparkles' | 'shield';
 }
 
@@ -181,6 +190,8 @@ export interface ChessLessonInteractive {
   initialFen: string;
   objectiveText: string;
   targetMoveSan: string[];
+  fromSquareHint?: string;
+  toSquareHint?: string;
   explanation: string;
 }
 
@@ -200,14 +211,15 @@ export interface RosaryMysteryGroup {
 }
 
 export const SUBJECT_LABELS: Record<CourseSubject, string> = {
-  reading: 'Aprendo a Leer',
+  reading: 'Aprender a Leer',
   math: 'Matemáticas',
   finance: 'Finanzas',
   drawing: 'Dibujo Realista',
   entrepreneurship: 'Emprendimiento',
   piano: 'Piano',
-  orthography: 'Ortografía',
   chess_course: 'Ajedrez',
+  english: 'Inglés',
+  orthography: 'Ortografía',
   prayer: 'Oración y Santo Rosario',
 };
 
@@ -1010,68 +1022,64 @@ export const ROSARY_MYSTERIES: RosaryMysteryGroup[] = [
 ];
 
 // ========================================================
-// LECCIONES PROGRESIVAS DE LA SECCIÓN AJEDREZ (CON TABLERO)
+// LECCIONES PEDAGÓGICAS INTERACTIVAS DE AJEDREZ (CON TABLERO REAL CHESS.JS + DRAG & DROP)
 // ========================================================
 export const CHESS_ACADEMY_LESSONS: ChessLessonInteractive[] = [
   {
-    id: 'chess-l1-pieces',
+    id: 'chess-l1-mate1',
     levelNumber: 1,
-    title: 'Nivel 1: El Movimiento de la Torre y la Dama',
-    categoryLabel: 'Movimiento de las Piezas',
-    description: 'Aprende cómo se desplaza la Torre en líneas rectas (filas y columnas) para capturar o dominar el tablero.',
-    xpReward: 40,
-    initialFen: '4k3/8/8/8/8/8/4R3/4K3 w - - 0 1',
-    objectiveText: 'Mueve la Torre blanca desde e2 hasta e8 (toca e2 y luego e8) para dar jaque en la columna abierta.',
-    targetMoveSan: ['Re8+'],
-    explanation: '¡Excelente! La Torre se mueve en línea recta vertical u horizontal tantas casillas libres como quiera.',
+    title: 'Lección 1: Cómo dar Jaque Mate en 1 jugada',
+    categoryLabel: 'Jaque Mate en 1',
+    description: 'Aprende a dar el clásico Mate del Beso con la Dama apoyada por tu Alfil en la gran diagonal.',
+    xpReward: 50,
+    initialFen: '6k1/5p1p/5Qp1/8/8/2B5/5PPP/6K1 w - - 0 1',
+    objectiveText: 'Juegan las Blancas: Mueve la Dama de f6 a g7 (Dg7#) para dar Jaque Mate en 1 jugada.',
+    targetMoveSan: ['Qg7#'],
+    fromSquareHint: 'f6',
+    toSquareHint: 'g7',
+    explanation: '¡Jaque Mate en 1 jugada (Dg7#)! La Dama ataca al Rey negro de cerca y no puede ser capturada porque tu Alfil en c3 la defiende.',
   },
   {
-    id: 'chess-l2-knight',
+    id: 'chess-l2-capture-undefended',
     levelNumber: 2,
-    title: 'Nivel 2: El Salto en "L" del Caballo y Reglas',
-    categoryLabel: 'Reglas y Piezas Especiales',
-    description: 'El Caballo es la única pieza que puede saltar sobre otras piezas moviéndose en forma de letra L.',
-    xpReward: 45,
-    initialFen: 'r1bqkbnr/pppppppp/2n5/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 1 2',
-    objectiveText: 'Desarrolla tu Caballo blanco desde g1 hasta la casilla activa f3 (toca g1 y luego f3).',
-    targetMoveSan: ['Nf3', 'Nc3'],
-    explanation: '¡Muy bien! Desarrollar los caballos hacia el centro (f3 o c3) en las primeras jugadas controla casillas clave.',
-  },
-  {
-    id: 'chess-l3-mate1',
-    levelNumber: 3,
-    title: 'Nivel 3: Jaque y Jaque Mate del Pasillo',
-    categoryLabel: 'Jaque y Jaque Mate',
-    description: 'Diferencia entre amenazar al Rey (Jaque) y encerrarlo sin escapatoria (Jaque Mate).',
+    title: 'Lección 2: Capturar una pieza indefensa',
+    categoryLabel: 'Ganar Material',
+    description: 'Identifica piezas rivales que no tienen defensores y captúralas de forma segura para ganar ventaja.',
     xpReward: 55,
-    initialFen: '6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1',
-    objectiveText: 'Lleva tu Torre blanca de d1 hasta d8 para dar Jaque Mate en la última fila.',
-    targetMoveSan: ['Rd8#'],
-    explanation: '¡Jaque Mate! El Rey negro no puede escapar porque sus propios peones en f7, g7 y h7 le bloquean la salida.',
+    initialFen: '4k3/ppp2ppp/8/4q3/8/5N2/PPP2PPP/3RK3 w - - 0 1',
+    objectiveText: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 moviendo tu Caballo de f3 a e5 (Cxe5).',
+    targetMoveSan: ['Nxe5'],
+    fromSquareHint: 'f3',
+    toSquareHint: 'e5',
+    explanation: '¡Excelente captura (Cxe5)! La Dama negra en e5 estaba completamente indefensa y ganaste 9 puntos de material gratis.',
   },
   {
-    id: 'chess-l4-openings',
+    id: 'chess-l3-knight-fork',
+    levelNumber: 3,
+    title: 'Lección 3: Ataque doble (Tenedor de Caballo)',
+    categoryLabel: 'Táctica: Tenedor',
+    description: 'Usa el salto en "L" del Caballo para atacar al Rey y a la Dama enemiga al mismo tiempo.',
+    xpReward: 65,
+    initialFen: '4k3/ppp2ppp/8/8/2q1N3/8/PPP2PPP/4K3 w - - 0 1',
+    objectiveText: 'Juegan las Blancas: Mueve tu Caballo de e4 a d6 (Cd6+) para hacer un Ataque Doble al Rey en e8 y a la Dama en c4.',
+    targetMoveSan: ['Nd6+'],
+    fromSquareHint: 'e4',
+    toSquareHint: 'd6',
+    explanation: '¡Tenedor perfecto (Cd6+)! Al dar jaque al Rey negro en e8, obligas al Rey a moverse y en la siguiente jugada capturarás la Dama de c4.',
+  },
+  {
+    id: 'chess-l4-escape-check',
     levelNumber: 4,
-    title: 'Nivel 4: Principios de Apertura — Control del Centro',
-    categoryLabel: 'Aperturas Clásicas',
-    description: 'Domina las 4 casillas centrales (e4, d4, e5, d5) y abre paso a tus alfiles y dama.',
-    xpReward: 60,
-    initialFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-    objectiveText: 'Realiza la jugada clásica de apertura avanzando el peón del Rey dos pasos: de e2 a e4.',
-    targetMoveSan: ['e4', 'd4'],
-    explanation: '¡Gran apertura! Avanzar el peón central (e4 o d4) controla el centro y libera el alfil y la dama.',
-  },
-  {
-    id: 'chess-l5-tactics',
-    levelNumber: 5,
-    title: 'Nivel 5: Táctica y Estrategia — Ataque Doble con Dama',
-    categoryLabel: 'Tácticas y Estrategia',
-    description: 'Busca jugadas que ataquen dos objetivos al mismo tiempo (el Rey y una pieza indefensa).',
-    xpReward: 75,
-    initialFen: 'r3k3/ppp2ppp/8/8/8/8/PPP2PPP/3QK1NR w Kq - 0 1',
-    objectiveText: 'Mueve la Dama blanca de d1 a d7 (o e2) dando jaque al Rey negro.',
-    targetMoveSan: ['Qd7+', 'Qe2+'],
-    explanation: '¡Dominio táctico! Los ataques con jaque obligan al rival a defender su Rey mientras ganas la iniciativa.',
+    title: 'Lección 4: Salir del jaque (Capturar, Bloquear o Mover)',
+    categoryLabel: 'Defensa del Rey',
+    description: 'Cuando tu Rey está en jaque, la mejor defensa es capturar la pieza atacante si está a tu alcance.',
+    xpReward: 70,
+    initialFen: '4k3/ppp2ppp/8/8/4q3/3B4/PPP2PPP/4K2R w K - 0 1',
+    objectiveText: '¡Tu Rey está en Jaque! Juegan las Blancas: Captura la Dama atacante en e4 con tu Alfil de d3 (Axe4) o sal del jaque.',
+    targetMoveSan: ['Bxe4', 'Be2', 'Kf1', 'Kd1'],
+    fromSquareHint: 'd3',
+    toSquareHint: 'e4',
+    explanation: '¡Gran defensa! Saliste del jaque eliminando la amenaza directa (Axe4) y además ganaste la Dama rival.',
   },
 ];
 
@@ -1166,45 +1174,111 @@ export const COURSES_DATA: Course[] = [
     id: 'chess-3-6-basic',
     subject: 'chess_course',
     ageGroup: '3-6',
-    title: 'Ajedrez Básico para Pequeños',
-    subtitle: 'Conoce al Rey, la Torre y el Caballito saltarín con sonidos',
+    title: 'Ajedrez Inicial',
+    subtitle: 'Tablero interactivo real: Mate en 1, capturas, tenedor de caballo y defensa del Rey',
     accentColor: '#10B981',
     lessons: [
       {
         id: 'l-chess36-1',
-        title: 'Nivel 1: El Caballito Saltarín',
-        description: 'Descubre qué pieza del ajedrez puede saltar sobre las demás.',
+        title: 'Lección 1: Cómo dar Jaque Mate en 1 jugada',
+        description: 'Arrastra o haz clic en la Dama para dar Jaque Mate apoyada por tu Alfil.',
         levelNumber: 1,
-        xpReward: 40,
-        durationMinutes: 3,
+        xpReward: 45,
+        durationMinutes: 4,
         exercises: [
           {
             id: 'ex-c36-1',
-            type: 'multiple_choice',
-            prompt: '¿Qué pieza tiene forma de animalito y salta por encima de otras piezas?',
-            audioText: 'El Caballo salta en forma de letra L por el tablero.',
-            options: ['El Caballo ♞', 'El Peón ♟', 'La Torre ♜'],
-            correctAnswer: 'El Caballo ♞',
-            hint: 'Relincha y salta muy alto: ¡el Caballo!',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Mueve la Dama a g7 para dar Jaque Mate en 1 jugada',
+            subtitle: 'Arrastra la Dama blanca desde f6 hasta g7 (o haz clic en f6 y luego en g7).',
+            audioText: 'Juegan las Blancas: Mueve la Dama de f6 a g7 para dar Jaque Mate en una jugada.',
+            hint: 'Tu Alfil en c3 protege la casilla g7. ¡Lleva tu Dama de f6 a g7!',
+            chessPuzzle: {
+              initialFen: '6k1/5p1p/5Qp1/8/8/2B5/5PPP/6K1 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Mueve la Dama de f6 a g7 (Dg7#) para dar Jaque Mate en 1 jugada.',
+              targetMoveSan: ['Qg7#'],
+              fromSquareHint: 'f6',
+              toSquareHint: 'g7',
+              explanation: '¡Jaque Mate en 1 jugada! La Dama en g7 está protegida por tu Alfil.',
+            },
           },
         ],
       },
       {
         id: 'l-chess36-2',
-        title: 'Nivel 2: Cuidando al Rey',
-        description: 'La pieza más importante que lleva una corona en su cabeza.',
+        title: 'Lección 2: Capturar una pieza indefensa',
+        description: 'Gana material capturando con tu Caballo una pieza que nadie defiende.',
         levelNumber: 2,
-        xpReward: 45,
-        durationMinutes: 3,
+        xpReward: 50,
+        durationMinutes: 4,
         exercises: [
           {
             id: 'ex-c36-2',
-            type: 'multiple_choice',
-            prompt: '¿Qué pieza lleva una cruz en su corona y debemos proteger siempre?',
-            audioText: 'El Rey es la pieza más importante del equipo.',
-            options: ['El Rey ♚', 'La Torre ♜', 'El Peón ♟'],
-            correctAnswer: 'El Rey ♚',
-            hint: 'Es el Rey del castillo.',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Captura la Dama indefensa en e5 con tu Caballo',
+            subtitle: 'Arrastra el Caballo blanco desde f3 hasta e5 para capturar de forma segura.',
+            audioText: 'Juegan las Blancas: salta con el Caballo de f3 a e5 para capturar la Dama indefensa.',
+            hint: 'El Caballo en f3 salta en forma de L hasta la casilla e5.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/4q3/8/5N2/PPP2PPP/3RK3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 con tu Caballo de f3 (Cxe5).',
+              targetMoveSan: ['Nxe5'],
+              fromSquareHint: 'f3',
+              toSquareHint: 'e5',
+              explanation: '¡Muy bien! Capturaste una pieza indefensa y ganaste ventaja.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess36-3',
+        title: 'Lección 3: Ataque doble (Tenedor de Caballo)',
+        description: 'Ataca al Rey y a la Dama al mismo tiempo con un salto de Caballo.',
+        levelNumber: 3,
+        xpReward: 55,
+        durationMinutes: 4,
+        exercises: [
+          {
+            id: 'ex-c36-3',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Salta con tu Caballo a d6 para atacar al Rey y la Dama',
+            subtitle: 'Arrastra el Caballo desde e4 hasta d6 para hacer un tenedor.',
+            audioText: 'Mueve el Caballo de e4 a d6 dando jaque al Rey y atacando la Dama.',
+            hint: 'Desde d6 tu Caballo amenaza e8 y c4 al mismo tiempo.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/2q1N3/8/PPP2PPP/4K3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Salta con tu Caballo de e4 a d6 (Cd6+) haciendo un Tenedor al Rey y la Dama.',
+              targetMoveSan: ['Nd6+'],
+              fromSquareHint: 'e4',
+              toSquareHint: 'd6',
+              explanation: '¡Súper Tenedor de Caballo! Atacaste dos piezas valiosas a la vez.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess36-4',
+        title: 'Lección 4: Salir del jaque',
+        description: 'Protege a tu Rey capturando la pieza atacante o bloqueando el jaque.',
+        levelNumber: 4,
+        xpReward: 60,
+        durationMinutes: 4,
+        exercises: [
+          {
+            id: 'ex-c36-4',
+            type: 'chess_puzzle',
+            prompt: '¡Tu Rey está en Jaque! Captura la Dama atacante en e4 con tu Alfil',
+            subtitle: 'Arrastra tu Alfil blanco desde d3 hasta e4 (o bloquea en e2) para defender a tu Rey.',
+            audioText: 'Tu Rey está en jaque. Usa tu Alfil en d3 para capturar la Dama en e4.',
+            hint: 'Tu Alfil en d3 puede moverse en diagonal hasta e4.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/4q3/3B4/PPP2PPP/4K2R w K - 0 1',
+              objectiveText: '¡Tu Rey está en Jaque! Captura la Dama atacante en e4 con tu Alfil de d3 (Axe4) o sal del jaque.',
+              targetMoveSan: ['Bxe4', 'Be2', 'Kf1', 'Kd1'],
+              fromSquareHint: 'd3',
+              toSquareHint: 'e4',
+              explanation: '¡Excelente defensa! Tu Rey ya está a salvo.',
+            },
           },
         ],
       },
@@ -1576,47 +1650,165 @@ export const COURSES_DATA: Course[] = [
     id: 'chess-course-7-13',
     subject: 'chess_course',
     ageGroup: '7-13',
-    title: 'Ajedrez Táctico y Estrategia',
-    subtitle: 'Valor de las piezas, aperturas, jaque mate y tácticas ganadoras',
+    title: 'Ajedrez',
+    subtitle: 'Lecciones tácticas en tablero real (Mate en 1, Pieza Indefensa, Tenedor y Salir del Jaque)',
     accentColor: '#0D9488',
     lessons: [
       {
         id: 'l-chess-713-1',
-        title: 'Nivel 1: Valor de las Piezas y Control del Centro',
-        description: 'Aprende cuántos puntos vale cada pieza para hacer buenos intercambios.',
+        title: 'Lección 1: Cómo dar Jaque Mate en 1 jugada',
+        description: 'Ejecuta el Mate del Beso con la Dama apoyada por tu Alfil en la diagonal.',
         levelNumber: 1,
         xpReward: 55,
         durationMinutes: 5,
         exercises: [
           {
             id: 'ex-ch713-1',
-            type: 'multiple_choice',
-            prompt: 'En ajedrez, si un Peón vale 1 punto y un Caballo o Alfil vale 3 puntos, ¿cuántos puntos vale la Dama (Reina)?',
-            options: ['9 puntos', '5 puntos (eso vale la Torre)', '2 puntos'],
-            correctAnswer: '9 puntos',
-            hint: 'La Dama combina el movimiento de la Torre (5) y el Alfil (3), valiendo 9 puntos.',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Mueve la Dama a g7 para dar Jaque Mate en 1 jugada',
+            subtitle: 'Arrastra la Dama blanca desde f6 hasta g7 o haz clic en las casillas.',
+            hint: 'Tu Alfil en c3 defiende la casilla g7 para que el Rey negro no pueda capturar tu Dama.',
+            chessPuzzle: {
+              initialFen: '6k1/5p1p/5Qp1/8/8/2B5/5PPP/6K1 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Mueve la Dama de f6 a g7 (Dg7#) para dar Jaque Mate en 1 jugada.',
+              targetMoveSan: ['Qg7#'],
+              fromSquareHint: 'f6',
+              toSquareHint: 'g7',
+              explanation: '¡Jaque Mate en 1 jugada (Dg7#)! La Dama y el Alfil cooperan en la gran diagonal.',
+            },
           },
         ],
       },
       {
         id: 'l-chess-713-2',
-        title: 'Nivel 2: El Ataque Doble (Tenedor) y la Clavada',
-        description: 'Domina las dos tácticas más efectivas para ganar material.',
+        title: 'Lección 2: Capturar una pieza indefensa (Ganar material)',
+        description: 'Identifica piezas rivales sin protección y captúralas de forma segura.',
         levelNumber: 2,
         xpReward: 60,
         durationMinutes: 5,
         exercises: [
           {
             id: 'ex-ch713-2',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 con tu Caballo',
+            subtitle: 'Mueve el Caballo desde f3 hasta e5 (Cxe5) arrastrando la pieza o con clic.',
+            hint: 'Observa que ninguna pieza negra defiende la casilla e5. ¡Cxe5 gana 9 puntos!',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/4q3/8/5N2/PPP2PPP/3RK3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 con tu Caballo de f3 (Cxe5).',
+              targetMoveSan: ['Nxe5'],
+              fromSquareHint: 'f3',
+              toSquareHint: 'e5',
+              explanation: '¡Excelente! Capturar piezas indefensas es la forma más segura de ganar ventaja material.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess-713-3',
+        title: 'Lección 3: Ataque doble (Tenedor de Caballo al Rey y Dama)',
+        description: 'Ataca dos piezas valiosas al mismo tiempo con un salto táctico de Caballo.',
+        levelNumber: 3,
+        xpReward: 65,
+        durationMinutes: 5,
+        exercises: [
+          {
+            id: 'ex-ch713-3',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Salta con tu Caballo de e4 a d6 para hacer un Tenedor al Rey y la Dama',
+            subtitle: 'Arrastra el Caballo blanco desde e4 hasta d6 dando jaque doble.',
+            hint: 'En d6 tu Caballo da jaque al Rey en e8 y ataca simultáneamente a la Dama en c4.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/2q1N3/8/PPP2PPP/4K3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Mueve el Caballo de e4 a d6 (Cd6+) atacando al Rey y a la Dama.',
+              targetMoveSan: ['Nd6+'],
+              fromSquareHint: 'e4',
+              toSquareHint: 'd6',
+              explanation: '¡Tenedor magistral (Cd6+)! El Rey negro está obligado a salir del jaque y ganas la Dama.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess-713-4',
+        title: 'Lección 4: Salir del jaque (Capturar, Bloquear o Mover el Rey)',
+        description: 'Aprende las 3 formas reglamentarias de responder cuando tu Rey está en jaque.',
+        levelNumber: 4,
+        xpReward: 70,
+        durationMinutes: 5,
+        exercises: [
+          {
+            id: 'ex-ch713-4',
+            type: 'chess_puzzle',
+            prompt: '¡Tu Rey está en Jaque! Juegan las Blancas: Captura la pieza atacante en e4 con tu Alfil',
+            subtitle: 'Arrastra el Alfil de d3 a e4 (Axe4) o bloquea en e2 para salir del jaque.',
+            hint: 'La mejor manera de salir del jaque aquí es capturar la Dama negra en e4 con tu Alfil de d3.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/4q3/3B4/PPP2PPP/4K2R w K - 0 1',
+              objectiveText: '¡Tu Rey está en Jaque! Captura la Dama atacante en e4 con tu Alfil de d3 (Axe4) o sal del jaque.',
+              targetMoveSan: ['Bxe4', 'Be2', 'Kf1', 'Kd1'],
+              fromSquareHint: 'd3',
+              toSquareHint: 'e4',
+              explanation: '¡Defensa perfecta! Eliminaste la pieza que daba jaque y quedaste con gran ventaja.',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'english-7-13',
+    subject: 'english',
+    ageGroup: '7-13',
+    title: 'Inglés Interactivo',
+    subtitle: 'Vocabulario esencial, comprensión lectora, conversación y gramática práctica',
+    accentColor: '#4F46E5',
+    lessons: [
+      {
+        id: 'l-eng-713-1',
+        title: 'Nivel 1: Greetings, Introductions & Daily Routines',
+        description: 'Aprende a presentarte y construir frases afirmativas en inglés.',
+        levelNumber: 1,
+        xpReward: 50,
+        durationMinutes: 5,
+        exercises: [
+          {
+            id: 'ex-eng713-1',
             type: 'multiple_choice',
-            prompt: '¿Qué es una "clavada" en ajedrez?',
+            prompt: '¿Cómo se responde correctamente a "Nice to meet you! How old are you?" en inglés?',
             options: [
-              'Cuando una pieza atacada no puede moverse sin dejar descubierta a otra pieza más valiosa (como el Rey o la Dama) detrás de ella',
-              'Mover dos piezas en el mismo turno',
-              'Avanzar todos los peones al mismo tiempo',
+              'Nice to meet you too! I am ten years old.',
+              'I have ten years old yesterday.',
+              'Good night, my name are ten.',
             ],
-            correctAnswer: 'Cuando una pieza atacada no puede moverse sin dejar descubierta a otra pieza más valiosa (como el Rey o la Dama) detrás de ella',
-            hint: 'Los alfiles, torres y damas crean clavadas a lo largo de diagonales, filas o columnas.',
+            correctAnswer: 'Nice to meet you too! I am ten years old.',
+            hint: 'En inglés la edad se expresa con el verbo "to be" (I am ... years old).',
+          },
+          {
+            id: 'ex-eng713-2',
+            type: 'multiple_choice',
+            prompt: 'Elige la opción correcta en Present Simple: "She ___ chess every afternoon with her friends."',
+            options: ['plays', 'play', 'playing'],
+            correctAnswer: 'plays',
+            hint: 'En tercera persona del singular (He / She / It) agregamos -s al verbo en Present Simple.',
+          },
+        ],
+      },
+      {
+        id: 'l-eng-713-2',
+        title: 'Nivel 2: Past Adventures & Questions in English',
+        description: 'Domina verbos en pasado y preguntas con Where, When y Why.',
+        levelNumber: 2,
+        xpReward: 55,
+        durationMinutes: 5,
+        exercises: [
+          {
+            id: 'ex-eng713-3',
+            type: 'multiple_choice',
+            prompt: 'Completa la pregunta en pasado: "Where ___ you go last weekend?"',
+            options: ['did', 'do', 'were'],
+            correctAnswer: 'did',
+            hint: 'Usamos el auxiliar "did" para preguntas en pasado simple con el verbo principal en forma base (go).',
           },
         ],
       },
@@ -1927,29 +2119,135 @@ export const COURSES_DATA: Course[] = [
     id: 'chess-course-14-18',
     subject: 'chess_course',
     ageGroup: '14-18',
-    title: 'Ajedrez Estratégico y Aperturas',
-    subtitle: 'Teoría de aperturas, estructuras de peones, sacrificios tácticos y finales',
+    title: 'Ajedrez',
+    subtitle: 'Táctica sobre el tablero real: Mate en 1, Ganancia de Material, Tenedores y Defensa',
     accentColor: '#2DD4BF',
     lessons: [
       {
         id: 'l-chess-1418-1',
-        title: 'Nivel 1: Apertura Italiana, Ruy López y Defensa Siciliana',
-        description: 'Comprende las ideas estratégicas detrás de las aperturas de élite.',
+        title: 'Lección 1: Cómo dar Jaque Mate en 1 jugada',
+        description: 'Coordina Dama y Alfil sobre el tablero real para ejecutar el Mate en 1.',
         levelNumber: 1,
-        xpReward: 75,
-        durationMinutes: 6,
+        xpReward: 70,
+        durationMinutes: 5,
         exercises: [
           {
             id: 'ex-ch1418-1',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Mueve la Dama a g7 para dar Jaque Mate en 1 jugada',
+            subtitle: 'Arrastra la Dama blanca de f6 a g7 (Dg7#) o haz clic en las casillas.',
+            hint: 'El Alfil en c3 sostiene a la Dama en g7 impidiendo que el Rey negro la capture.',
+            chessPuzzle: {
+              initialFen: '6k1/5p1p/5Qp1/8/8/2B5/5PPP/6K1 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Mueve la Dama de f6 a g7 (Dg7#) para dar Jaque Mate en 1 jugada.',
+              targetMoveSan: ['Qg7#'],
+              fromSquareHint: 'f6',
+              toSquareHint: 'g7',
+              explanation: '¡Jaque Mate en 1 jugada (Dg7#)! Coordinación letal en la gran diagonal.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess-1418-2',
+        title: 'Lección 2: Capturar una pieza indefensa (Ganar material)',
+        description: 'Castiga las piezas sin sostén táctico en el centro del tablero.',
+        levelNumber: 2,
+        xpReward: 75,
+        durationMinutes: 5,
+        exercises: [
+          {
+            id: 'ex-ch1418-2',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 con tu Caballo',
+            subtitle: 'Mueve el Caballo de f3 a e5 (Cxe5) arrastrando o haciendo clic.',
+            hint: 'La Dama en e5 carece de defensores y tu Caballo en f3 la captura limpiamente.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/4q3/8/5N2/PPP2PPP/3RK3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Captura la Dama negra indefensa en e5 con tu Caballo de f3 (Cxe5).',
+              targetMoveSan: ['Nxe5'],
+              fromSquareHint: 'f3',
+              toSquareHint: 'e5',
+              explanation: '¡Precisión táctica! Ganaste la Dama central sin conceder contrajuego.',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess-1418-3',
+        title: 'Lección 3: Ataque doble (Tenedor de Caballo)',
+        description: 'Ejecuta un ataque simultáneo con jaque al Rey y amenaza directa a la Dama.',
+        levelNumber: 3,
+        xpReward: 80,
+        durationMinutes: 6,
+        exercises: [
+          {
+            id: 'ex-ch1418-3',
+            type: 'chess_puzzle',
+            prompt: 'Juegan las Blancas: Salta con tu Caballo de e4 a d6 para hacer un Tenedor al Rey y la Dama',
+            subtitle: 'Arrastra el Caballo de e4 a d6 (Cd6+).',
+            hint: 'Cd6+ fuerza la respuesta del Rey negro y deja la Dama en c4 indefensa.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/2q1N3/8/PPP2PPP/4K3 w - - 0 1',
+              objectiveText: 'Juegan las Blancas: Salta con tu Caballo de e4 a d6 (Cd6+) haciendo un Ataque Doble al Rey y la Dama.',
+              targetMoveSan: ['Nd6+'],
+              fromSquareHint: 'e4',
+              toSquareHint: 'd6',
+              explanation: '¡Ataque doble impecable (Cd6+)!',
+            },
+          },
+        ],
+      },
+      {
+        id: 'l-chess-1418-4',
+        title: 'Lección 4: Salir del jaque',
+        description: 'Evalúa entre capturar la pieza agresora, interponer material o desplazar el Rey.',
+        levelNumber: 4,
+        xpReward: 85,
+        durationMinutes: 6,
+        exercises: [
+          {
+            id: 'ex-ch1418-4',
+            type: 'chess_puzzle',
+            prompt: '¡Tu Rey está en Jaque! Juegan las Blancas: Captura la Dama atacante en e4 con tu Alfil',
+            subtitle: 'Arrastra el Alfil blanco de d3 a e4 (Axe4) o bloquea en e2.',
+            hint: 'Eliminar la pieza atacante con Axe4 resuelve el jaque y gana material decisivo.',
+            chessPuzzle: {
+              initialFen: '4k3/ppp2ppp/8/8/4q3/3B4/PPP2PPP/4K2R w K - 0 1',
+              objectiveText: '¡Tu Rey está en Jaque! Captura la Dama atacante en e4 con tu Alfil de d3 (Axe4) o sal del jaque.',
+              targetMoveSan: ['Bxe4', 'Be2', 'Kf1', 'Kd1'],
+              fromSquareHint: 'd3',
+              toSquareHint: 'e4',
+              explanation: '¡Defensa activa perfecta!',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'english-14-18',
+    subject: 'english',
+    ageGroup: '14-18',
+    title: 'Inglés Avanzado & Academic English',
+    subtitle: 'Conditionals, Phrasal Verbs, lectura crítica y comunicación global',
+    accentColor: '#6366F1',
+    lessons: [
+      {
+        id: 'l-eng-1418-1',
+        title: 'Nivel 1: Second & Third Conditionals in Context',
+        description: 'Domina escenarios hipotéticos y consecuencias en inglés académico.',
+        levelNumber: 1,
+        xpReward: 70,
+        durationMinutes: 6,
+        exercises: [
+          {
+            id: 'ex-eng1418-1',
             type: 'multiple_choice',
-            prompt: 'En la Apertura Italiana (1.e4 e5 2.Cf3 Cc6 3.Ac4), ¿por qué el alfil blanco se coloca en c4?',
-            options: [
-              'Porque apunta directamente al punto más vulnerable del campo negro al inicio: el peón f7 (defendido solo por el Rey)',
-              'Porque busca cambiar el alfil por un peón lateral en a6',
-              'Para bloquear la salida de su propio peón d2',
-            ],
-            correctAnswer: 'Porque apunta directamente al punto más vulnerable del campo negro al inicio: el peón f7 (defendido solo por el Rey)',
-            hint: 'La diagonal a2-g8 presiona directamente sobre f7.',
+            prompt: 'Selecciona la estructura correcta de Second Conditional: "If we ___ more renewable energy, we would reduce carbon emissions significantly."',
+            options: ['invested', 'invest', 'will invest'],
+            correctAnswer: 'invested',
+            hint: 'El Second Conditional utiliza Past Simple en la cláusula con "If" + "would + infinitive" en la cláusula principal.',
           },
         ],
       },
@@ -2546,17 +2844,17 @@ export const ALL_MEDALS_CATALOG: MedalCatalogItem[] = [
     iconName: 'shield',
   },
   {
-    id: 'medal-routines-gems',
+    id: 'medal-gems-collector',
     title: 'Constancia de Diamante',
-    description: 'Completa una rutina diaria y gana tus primeras 5 gemas.',
-    requirementText: 'Completar 1 rutina diaria',
-    category: 'routines',
+    description: 'Gana gemas completando lecciones de tus cursos o venciendo a los Bots de Ajedrez.',
+    requirementText: 'Ganar gemas en lecciones o ajedrez',
+    category: 'general',
     iconName: 'coins',
   },
   {
     id: 'medal-graduado-g1',
     title: 'Graduado de Lectura y Ajedrez',
-    description: 'Completaste el curso de Aprender a Leer y Ajedrez Básico para pasar a la nueva etapa.',
+    description: 'Completaste el curso de Aprender a Leer y Ajedrez Inicial para pasar a la nueva etapa.',
     requirementText: 'Completar Lectura + Ajedrez Inicial',
     category: 'general',
     iconName: 'trophy',

@@ -9,15 +9,15 @@ export type CourseSubject =
   | 'drawing'
   | 'entrepreneurship'
   | 'piano'
-  | 'orthography'
   | 'chess_course'
+  | 'english'
+  | 'orthography'
   | 'prayer';
 
 export type NavTabId =
   | 'learn'
   | 'library'
   | 'chess'
-  | 'routines'
   | 'games'
   | 'friends'
   | 'profile'
@@ -26,14 +26,6 @@ export type NavTabId =
 export type ChildMood = 'happy' | 'excited' | 'calm' | 'curious' | 'focused';
 
 export type ShopCategoryTab = 'boards' | 'pieces' | 'coaches' | 'avatars';
-
-export interface RoutineItem {
-  id: string;
-  title: string;
-  time: string;
-  category: string;
-  completedToday: boolean;
-}
 
 export interface UserProfile {
   id: string;
@@ -59,7 +51,7 @@ export interface UserProfile {
   completedChessLessonIds: string[];
   completedBookIds: string[];
   unlockedMedalIds: string[];
-  routines: RoutineItem[];
+  enrolledSubjects: CourseSubject[];
   allowedSubjects: CourseSubject[];
   parentEmail: string;
   parentPin: string;
@@ -191,14 +183,6 @@ export function getAvatarAgeTier(age: number): 'under_9' | '9_plus' {
 }
 
 /**
- * La sección "Rutinas / Horario de Lecciones" (Schedule / Learning Plan) está disponible
- * en celular y computadora, y otorga +5 gemas por cada rutina o hábito completado.
- */
-export function canAccessRoutines(age: number): boolean {
-  return age >= 3;
-}
-
-/**
  * El chat está desactivado y oculto mientras el niño esté en el Grupo 1 (3 a 6 años, aprendiendo a leer).
  * En los juegos, el Grupo 1 solo puede enviar reacciones con emojis.
  */
@@ -219,7 +203,9 @@ export function getInitialAvatarForAgeGroup(ageGroup: AgeGroup, age?: number): s
 }
 
 /**
- * Devuelve las materias disponibles por defecto para cada grupo de edad.
+ * Devuelve el catálogo de cursos disponibles para cada grupo de edad:
+ * - 3-6 años: Aprender a Leer, Ajedrez Inicial (+ Oración)
+ * - 7-13 y 14-18 años: Matemáticas, Finanzas, Dibujo Realista, Emprendimiento, Piano, Ajedrez, Inglés (+ Ortografía, Oración)
  */
 export function getDefaultSubjectsForAgeGroup(ageGroup: AgeGroup): CourseSubject[] {
   if (ageGroup === '3-6') {
@@ -231,24 +217,27 @@ export function getDefaultSubjectsForAgeGroup(ageGroup: AgeGroup): CourseSubject
     'drawing',
     'entrepreneurship',
     'piano',
-    'orthography',
     'chess_course',
+    'english',
+    'orthography',
     'prayer',
   ];
 }
 
 /**
- * Barra de navegación inferior flotante en forma de cápsula (sin mostrar nunca grupos de edad):
- * Incluye "Rutinas" (Schedule / Learning Plan) y "Juegos" tanto en celular como en computadora.
+ * Barra de navegación inferior minimalista (Bottom Tab Bar idéntica a la imagen de referencia):
+ * Devuelve los 4 accesos principales de navegación (que junto al 5º ícono de Modo Claro/Oscuro
+ * conforman los máximo 5 íconos minimalistas de línea fina):
+ * 1. Inicio / Aprender ('learn')
+ * 2. Biblioteca / Cuentos ('library')
+ * 3. Amigos / Chat ('friends')
+ * 4. Perfil ('profile')
  */
 export function getNavigationTabsForAgeGroup(
-  ageGroup: AgeGroup,
+  _ageGroup: AgeGroup,
   _age?: number
 ): NavTabId[] {
-  if (ageGroup === '3-6') {
-    return ['learn', 'library', 'routines', 'chess', 'games', 'friends', 'profile'];
-  }
-  return ['learn', 'routines', 'chess', 'games', 'friends', 'profile'];
+  return ['learn', 'library', 'friends', 'profile'];
 }
 
 /**
@@ -373,7 +362,7 @@ export function createFreshUserAccount(params: {
     completedChessLessonIds: [],
     completedBookIds: [],
     unlockedMedalIds: [],
-    routines: [],
+    enrolledSubjects: [],
     allowedSubjects: getDefaultSubjectsForAgeGroup(ageGroup),
     parentEmail: (params.parentEmail || 'tutor@familia.es').trim(),
     parentPin: cleanPin,
@@ -391,7 +380,8 @@ export function createFreshUserAccount(params: {
 }
 
 /**
- * Normaliza perfiles guardados en versiones previas para asegurar que tengan los campos de la tienda y su Código de Amigo.
+ * Normaliza perfiles guardados en versiones previas para asegurar que tengan los campos de la tienda,
+ * su Código de Amigo y la lista de cursos inscritos (enrolledSubjects).
  */
 export function ensureShopDefaultsOnProfile(profile: UserProfile): UserProfile {
   const defaultBoard = profile.selectedBoardId || 'board_classic_wood';
@@ -405,6 +395,13 @@ export function ensureShopDefaultsOnProfile(profile: UserProfile): UserProfile {
   return {
     ...profile,
     friendCode,
+    enrolledSubjects: Array.isArray(profile.enrolledSubjects)
+      ? profile.enrolledSubjects
+      : [],
+    allowedSubjects:
+      Array.isArray(profile.allowedSubjects) && profile.allowedSubjects.length > 0
+        ? profile.allowedSubjects
+        : getDefaultSubjectsForAgeGroup(profile.ageGroup),
     selectedBoardId: defaultBoard,
     unlockedBoardIds:
       Array.isArray(profile.unlockedBoardIds) && profile.unlockedBoardIds.length > 0
@@ -551,36 +548,18 @@ export function areUsersInSameAgeGroup(ageGroupA: AgeGroup, ageGroupB: AgeGroup)
 }
 
 /**
- * Otorga +5 gemas al completar una rutina diaria (disponible desde los 10 años en adelante).
- */
-export function completeDailyRoutineReward(
-  alreadyCompletedToday: boolean,
-  currentGems: number
-): { gemsEarned: number; newGemTotal: number } {
-  if (alreadyCompletedToday) {
-    return { gemsEarned: 0, newGemTotal: currentGems };
-  }
-  return {
-    gemsEarned: 5,
-    newGemTotal: currentGems + 5,
-  };
-}
-
-/**
  * Calcula las gemas ganadas al completar actividades para que TODOS los niños
- * (incluidos los menores de 10 años) puedan ganar gemas:
- * - routine: +5 gemas
+ * puedan ganar gemas:
  * - lesson: +5 gemas
  * - chess_win: +8 gemas
  * - chess_lesson: +5 gemas
  * - videogame_win: +5 gemas
  */
 export function calculateActivityGemReward(
-  activityType: 'routine' | 'lesson' | 'chess_win' | 'chess_lesson' | 'videogame_win',
+  activityType: 'lesson' | 'chess_win' | 'chess_lesson' | 'videogame_win',
   currentGems: number
 ): { gemsEarned: number; newGemTotal: number } {
   const rewardTable: Record<typeof activityType, number> = {
-    routine: 5,
     lesson: 5,
     chess_win: 8,
     chess_lesson: 5,
@@ -612,7 +591,7 @@ export function purchaseShopItemWithGems(
       success: false,
       remainingGems: currentGems,
       missingGems: missing,
-      reason: `¡Ánimo! Te faltan ${missing} gemas para desbloquear "${itemName}" (tienes ${currentGems} de ${cost} gemas). ¡Sigue ganando gemas al completar lecciones, ganar partidas de ajedrez, triunfar en los videojuegos o cumplir tus rutinas!`,
+      reason: `¡Ánimo! Te faltan ${missing} gemas para desbloquear "${itemName}" (tienes ${currentGems} de ${cost} gemas). ¡Sigue ganando gemas al completar lecciones, ganar partidas de ajedrez o triunfar en los videojuegos!`,
     };
   }
   return {

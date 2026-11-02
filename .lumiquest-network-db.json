@@ -95,6 +95,42 @@
       "xp": 0,
       "streak": 0,
       "updatedAt": 1793576430848
+    },
+    "usr_mateo_10_jmq": {
+      "id": "usr_mateo_10_jmq",
+      "friendCode": "LUMI-6158",
+      "username": "@mateo",
+      "name": "Mateo",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793579230977
+    },
+    "usr_mateo_10_liz": {
+      "id": "usr_mateo_10_liz",
+      "friendCode": "LUMI-6158",
+      "username": "@mateo",
+      "name": "Mateo",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793579373320
+    },
+    "usr_mateo_10_036": {
+      "id": "usr_mateo_10_036",
+      "friendCode": "LUMI-6158",
+      "username": "@mateo",
+      "name": "Mateo",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 15,
+      "streak": 1,
+      "updatedAt": 1793579453846
     }
   },
   "friendships": {

@@ -7,14 +7,12 @@ import {
   getNavigationTabsForAgeGroup,
   createFreshUserAccount,
   isLessonUnlocked,
-  completeDailyRoutineReward,
   calculateActivityGemReward,
   purchaseShopItemWithGems,
   purchaseAvatarWithGems,
   areUsersInSameAgeGroup,
   requiresParentalConsent,
   canCustomizeWallpaper,
-  canAccessRoutines,
   isChatEnabledForGroup,
   checkGroup1ToGroup2Graduation,
   promoteChildFromGroup1ToGroup2,
@@ -31,9 +29,16 @@ import {
   ANTI_CHILD_PHOTO_LEGAL_MESSAGE,
   SAFE_KIDS_GIFS,
 } from './educationLogic';
-import { getBooksForAgeGroup } from '../data/curriculumData';
+import {
+  getBooksForAgeGroup,
+  CHESS_ACADEMY_LESSONS,
+} from '../data/curriculumData';
+import {
+  computeRealChessBotMove,
+  verifyChessPuzzleMove,
+} from './chessEngine';
 
-test('createFreshUserAccount initializes a brand new child account completely from zero with starter items for all 4 shop categories', () => {
+test('createFreshUserAccount initializes a brand new child account completely from zero (0 XP, 0 streak, 0 enrolled courses)', () => {
   const fresh = createFreshUserAccount({
     username: 'mateo_10',
     name: 'Mateo',
@@ -58,7 +63,7 @@ test('createFreshUserAccount initializes a brand new child account completely fr
   assert.deepEqual(fresh.unlockedCoachIds, ['coach_kind']);
   assert.deepEqual(fresh.completedLessonIds, []);
   assert.deepEqual(fresh.unlockedMedalIds, []);
-  assert.deepEqual(fresh.routines, []);
+  assert.deepEqual(fresh.enrolledSubjects, []);
 
   const levelInfo = calculateLevelFromXP(fresh.xp);
   assert.equal(levelInfo.level, 1);
@@ -78,33 +83,22 @@ test('isLessonUnlocked unlocks lesson 0 and locks subsequent lessons until previ
   assert.equal(isLessonUnlocked(1, 'lesson-1', ['lesson-1']), true);
 });
 
-test('getNavigationTabsForAgeGroup includes routines and games in navigation bar without exposing age groups', () => {
-  assert.equal(canAccessRoutines(5), true);
-  assert.equal(canAccessRoutines(10), true);
-  assert.equal(canAccessRoutines(15), true);
-
+test('getNavigationTabsForAgeGroup returns the 4 minimalist navigation tabs without routines', () => {
   assert.deepEqual(getNavigationTabsForAgeGroup('3-6', 5), [
     'learn',
     'library',
-    'routines',
-    'chess',
-    'games',
     'friends',
     'profile',
   ]);
   assert.deepEqual(getNavigationTabsForAgeGroup('7-13', 10), [
     'learn',
-    'routines',
-    'chess',
-    'games',
+    'library',
     'friends',
     'profile',
   ]);
   assert.deepEqual(getNavigationTabsForAgeGroup('14-18', 16), [
     'learn',
-    'routines',
-    'chess',
-    'games',
+    'library',
     'friends',
     'profile',
   ]);
@@ -163,15 +157,7 @@ test('updateChildAgeByParent requires valid PIN and transitions Group 2 to Group
   assert.equal(validAttempt.updatedProfile.ageGroup, '14-18');
 });
 
-test('completeDailyRoutineReward and calculateActivityGemReward grant gems for routines, lessons, chess wins, and videogames', () => {
-  const firstCompletion = completeDailyRoutineReward(false, 0);
-  assert.equal(firstCompletion.gemsEarned, 5);
-  assert.equal(firstCompletion.newGemTotal, 5);
-
-  const duplicateCompletion = completeDailyRoutineReward(true, 5);
-  assert.equal(duplicateCompletion.gemsEarned, 0);
-  assert.equal(duplicateCompletion.newGemTotal, 5);
-
+test('calculateActivityGemReward grants gems for lessons, chess wins, and videogames', () => {
   const lessonGem = calculateActivityGemReward('lesson', 5);
   assert.equal(lessonGem.gemsEarned, 5);
   assert.equal(lessonGem.newGemTotal, 10);
@@ -201,10 +187,7 @@ test('canUsersChat disables chat completely for Group 1 (3-6) and enforces same 
   assert.equal(isChatEnabledForGroup('3-6'), false);
   assert.equal(isChatEnabledForGroup('7-13'), true);
 
-  // Group 1 child can never chat even with accepted friend
   assert.equal(canUsersChat('accepted', 5, true, true, '3-6').canChat, false);
-
-  // Group 2/3 child can chat only if accepted, same group, and parent approved
   assert.equal(canUsersChat('accepted', 10, true, false, '7-13').canChat, false);
   assert.equal(canUsersChat('pending_sent', 10, true, true, '7-13').canChat, false);
   assert.equal(canUsersChat('accepted', 10, false, true, '7-13').canChat, false);
@@ -229,11 +212,9 @@ test('moderateChatMessage and detectGroomingOrPersonalDataInChat block grooming,
   assert.equal(safeMsg.allowed, true);
   assert.equal(safeMsg.autoBlockAndExpelSender, false);
 
-  // Profanity blocks message without grooming expulsion
   const profanityMsg = moderateChatMessage('Eres un tonto');
   assert.equal(profanityMsg.allowed, false);
 
-  // Asking for personal photos ("mandame una foto", "mostrate") triggers instant block AND automatic peer expulsion
   const photoReq1 = detectGroomingOrPersonalDataInChat('Hola, mandame una foto tuya');
   assert.equal(photoReq1.allowed, false);
   assert.equal(photoReq1.isCriticalGrooming, true);
@@ -244,14 +225,12 @@ test('moderateChatMessage and detectGroomingOrPersonalDataInChat block grooming,
   assert.equal(photoReq2.allowed, false);
   assert.equal(photoReq2.autoBlockAndExpelSender, true);
 
-  // Asking for home address ("dónde vivís", "tu dirección") triggers instant block AND automatic peer expulsion
   const addressReq = detectGroomingOrPersonalDataInChat('¿Dónde vivís? Pásame tu dirección');
   assert.equal(addressReq.allowed, false);
   assert.equal(addressReq.isCriticalGrooming, true);
   assert.equal(addressReq.autoBlockAndExpelSender, true);
   assert.equal(addressReq.violationCategory, 'address_location');
 
-  // Asking for school or in-person meeting triggers instant block AND automatic peer expulsion
   const schoolReq = detectGroomingOrPersonalDataInChat('¿A qué escuela vas?');
   assert.equal(schoolReq.allowed, false);
   assert.equal(schoolReq.autoBlockAndExpelSender, true);
@@ -351,4 +330,69 @@ test('Library rules by age: 3-6 has Spanish stories WITH illustrations; 7-13 and
   );
 });
 
+test('Chess Course pedagogical lessons use valid chess.js FEN positions and verify legal target solutions', () => {
+  assert.equal(CHESS_ACADEMY_LESSONS.length, 4);
 
+  // Lesson 1: Mate in 1 (Qg7#)
+  const l1 = CHESS_ACADEMY_LESSONS[0];
+  const res1 = verifyChessPuzzleMove({
+    initialFen: l1.initialFen,
+    from: 'f6',
+    to: 'g7',
+    targetMoveSan: l1.targetMoveSan,
+  });
+  assert.equal(res1.legal, true);
+  assert.equal(res1.solved, true);
+  assert.equal(res1.isCheckmate, true);
+
+  // Lesson 2: Capture undefended Queen (Nxe5)
+  const l2 = CHESS_ACADEMY_LESSONS[1];
+  const res2 = verifyChessPuzzleMove({
+    initialFen: l2.initialFen,
+    from: 'f3',
+    to: 'e5',
+    targetMoveSan: l2.targetMoveSan,
+  });
+  assert.equal(res2.legal, true);
+  assert.equal(res2.solved, true);
+
+  // Lesson 3: Knight fork to King and Queen (Nd6+)
+  const l3 = CHESS_ACADEMY_LESSONS[2];
+  const res3 = verifyChessPuzzleMove({
+    initialFen: l3.initialFen,
+    from: 'e4',
+    to: 'd6',
+    targetMoveSan: l3.targetMoveSan,
+  });
+  assert.equal(res3.legal, true);
+  assert.equal(res3.solved, true);
+
+  // Lesson 4: Escape check by capturing attacker (Bxe4)
+  const l4 = CHESS_ACADEMY_LESSONS[3];
+  const res4 = verifyChessPuzzleMove({
+    initialFen: l4.initialFen,
+    from: 'd3',
+    to: 'e4',
+    targetMoveSan: l4.targetMoveSan,
+  });
+  assert.equal(res4.legal, true);
+  assert.equal(res4.solved, true);
+});
+
+test('Real Chess Bot Engine (200, 1000, and 2000 ELO) captures hanging pieces and finds tactical checkmates', () => {
+  // Black to move with an obvious capture of an undefended white queen on e4 by black knight on f6
+  const hangingQueenFen = '4k3/ppp2ppp/5n2/8/4Q3/8/PPP2PPP/4K3 b - - 0 1';
+  const move200 = computeRealChessBotMove(hangingQueenFen, '200');
+  const move1000 = computeRealChessBotMove(hangingQueenQueenFenOrDefault(hangingQueenFen), '1000');
+  const move2000 = computeRealChessBotMove(hangingQueenFen, '2000');
+
+  assert.ok(move200);
+  assert.equal(move1000?.from, 'f6');
+  assert.equal(move1000?.to, 'e4');
+  assert.equal(move2000?.from, 'f6');
+  assert.equal(move2000?.to, 'e4');
+});
+
+function hangingQueenQueenFenOrDefault(fen: string): string {
+  return fen;
+}

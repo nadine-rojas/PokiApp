@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Chess, Square, Move } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 import {
   Trophy,
   Bot,
@@ -14,6 +14,7 @@ import {
   Lightbulb,
   ShoppingBag,
   Gem,
+  Move as MoveIcon,
 } from 'lucide-react';
 import {
   AgeGroup,
@@ -26,16 +27,224 @@ import {
   CHESS_PIECES_CATALOG,
   CHESS_COACHES_CATALOG,
   ChessLessonInteractive,
+  ChessBoardThemeOption,
+  ChessPiecesStyleOption,
 } from '../data/curriculumData';
+import {
+  BotEloLevel,
+  CHESS_BOT_LEVELS,
+  computeRealChessBotMove,
+} from '../utils/chessEngine';
 import { playRewardSound, speakSpanishText } from '../utils/soundEffects';
 
-export type BotDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+export type { BotEloLevel };
 
 interface AcceptedFriendSummary {
   id: string;
   username: string;
   name: string;
   avatarId: string;
+}
+
+export interface InteractiveChessboardProps {
+  fen: string;
+  selectedSquare: Square | null;
+  legalTargetSquares: Square[];
+  onSquareClick: (sq: Square) => void;
+  onPieceDropMove?: (fromSq: Square, toSq: Square) => void;
+  onStartPieceDrag?: (fromSq: Square) => void;
+  boardTheme?: ChessBoardThemeOption;
+  piecesStyle?: ChessPiecesStyleOption;
+  testId?: string;
+}
+
+/**
+ * Tablero de ajedrez interactivo reutilizable que soporta:
+ * 1) Arrastrar y soltar con mouse (HTML5 Drag & Drop: onDragStart, onDragOver, onDrop)
+ * 2) Arrastrar con el dedo en pantallas táctiles (onTouchStart, onTouchMove, onTouchEnd)
+ * 3) Clic en casilla origen y clic en casilla destino
+ * Ilumina las casillas legales de destino tanto al seleccionar como al arrastrar una pieza.
+ */
+export function InteractiveChessboard({
+  fen,
+  selectedSquare,
+  legalTargetSquares,
+  onSquareClick,
+  onPieceDropMove,
+  onStartPieceDrag,
+  boardTheme = CHESS_BOARDS_CATALOG[0],
+  piecesStyle = CHESS_PIECES_CATALOG[0],
+  testId = 'interactive-chessboard',
+}: InteractiveChessboardProps) {
+  const [draggedFromSq, setDraggedFromSq] = useState<Square | null>(null);
+  const [hoverTargetSq, setHoverTargetSq] = useState<Square | null>(null);
+
+  const tempChess = new Chess(fen);
+  const boardMatrix = tempChess.board();
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+  const handleTouchEndResolve = (e: React.TouchEvent<HTMLButtonElement>) => {
+    if (!draggedFromSq) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const squareBtn = el?.closest('[data-chess-square]') as HTMLElement | null;
+    const targetSq = squareBtn?.getAttribute('data-chess-square') as Square | null;
+    if (targetSq && targetSq !== draggedFromSq && onPieceDropMove) {
+      onPieceDropMove(draggedFromSq, targetSq);
+    }
+    setDraggedFromSq(null);
+    setHoverTargetSq(null);
+  };
+
+  const handleTouchMoveTrack = (e: React.TouchEvent<HTMLButtonElement>) => {
+    if (!draggedFromSq) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const squareBtn = el?.closest('[data-chess-square]') as HTMLElement | null;
+    const targetSq = squareBtn?.getAttribute('data-chess-square') as Square | null;
+    if (targetSq && targetSq !== hoverTargetSq) {
+      setHoverTargetSq(targetSq);
+    }
+  };
+
+  return (
+    <div
+      className={`w-full max-w-[440px] aspect-square mx-auto rounded-2xl overflow-hidden border-4 ${boardTheme.boardBorderClass} shadow-lg grid grid-cols-8 grid-rows-8 select-none touch-none`}
+      data-testid={testId}
+      data-board-theme={boardTheme.id}
+      data-pieces-style={piecesStyle.id}
+    >
+      {boardMatrix.map((row, rIdx) =>
+        row.map((cell, cIdx) => {
+          const sqName = `${files[cIdx]}${8 - rIdx}` as Square;
+          const isLight = (rIdx + cIdx) % 2 === 0;
+          const isSelected = selectedSquare === sqName || draggedFromSq === sqName;
+          const isTarget = legalTargetSquares.includes(sqName);
+          const isHoveredDrop = hoverTargetSq === sqName && isTarget;
+          const canDragPiece = Boolean(cell && cell.color === tempChess.turn());
+
+          const pieceKey = cell
+            ? (`${cell.color}${cell.type}` as keyof typeof piecesStyle.pieceMap)
+            : null;
+
+          return (
+            <button
+              key={sqName}
+              type="button"
+              data-chess-square={sqName}
+              data-testid={`chess-square-${sqName}`}
+              data-legal-target={isTarget ? 'true' : 'false'}
+              draggable={canDragPiece}
+              onClick={() => onSquareClick(sqName)}
+              onDragStart={(e) => {
+                if (!canDragPiece) {
+                  e.preventDefault();
+                  return;
+                }
+                e.dataTransfer.setData('text/plain', sqName);
+                e.dataTransfer.effectAllowed = 'move';
+                setDraggedFromSq(sqName);
+                if (onStartPieceDrag) {
+                  onStartPieceDrag(sqName);
+                } else {
+                  onSquareClick(sqName);
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (hoverTargetSq !== sqName) {
+                  setHoverTargetSq(sqName);
+                }
+              }}
+              onDragLeave={() => {
+                if (hoverTargetSq === sqName) {
+                  setHoverTargetSq(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const originSq = (e.dataTransfer.getData('text/plain') ||
+                  draggedFromSq) as Square | null;
+                setDraggedFromSq(null);
+                setHoverTargetSq(null);
+                if (originSq && originSq !== sqName) {
+                  if (onPieceDropMove) {
+                    onPieceDropMove(originSq, sqName);
+                  } else {
+                    onSquareClick(sqName);
+                  }
+                }
+              }}
+              onDragEnd={() => {
+                setDraggedFromSq(null);
+                setHoverTargetSq(null);
+              }}
+              onTouchStart={() => {
+                if (canDragPiece) {
+                  setDraggedFromSq(sqName);
+                  if (onStartPieceDrag) {
+                    onStartPieceDrag(sqName);
+                  } else {
+                    onSquareClick(sqName);
+                  }
+                }
+              }}
+              onTouchMove={handleTouchMoveTrack}
+              onTouchEnd={handleTouchEndResolve}
+              aria-label={`Casilla ${sqName}${cell ? ` con pieza ${cell.color}${cell.type}` : ''}`}
+              className={`relative flex items-center justify-center transition-colors ${
+                isSelected
+                  ? 'bg-yellow-300 ring-2 ring-inset ring-amber-600'
+                  : isHoveredDrop
+                  ? 'bg-emerald-300 ring-2 ring-inset ring-emerald-700'
+                  : isLight
+                  ? boardTheme.lightSquareClass
+                  : boardTheme.darkSquareClass
+              } ${canDragPiece ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+            >
+              {cIdx === 0 && (
+                <span
+                  className={`absolute top-0.5 left-1 text-[9px] font-mono font-bold opacity-70 pointer-events-none ${boardTheme.coordTextClass}`}
+                >
+                  {8 - rIdx}
+                </span>
+              )}
+              {rIdx === 7 && (
+                <span
+                  className={`absolute bottom-0.5 right-1 text-[9px] font-mono font-bold opacity-70 pointer-events-none ${boardTheme.coordTextClass}`}
+                >
+                  {files[cIdx]}
+                </span>
+              )}
+              {isTarget && (
+                <span
+                  className={`pointer-events-none z-10 ${
+                    cell
+                      ? 'absolute inset-1 rounded-full ring-4 ring-rose-500/85 animate-pulse'
+                      : 'w-3.5 h-3.5 rounded-full bg-emerald-900/55 ring-2 ring-white/60'
+                  }`}
+                />
+              )}
+              {pieceKey && (
+                <span
+                  className={`text-2xl sm:text-4xl leading-none select-none pointer-events-none ${
+                    cell?.color === 'w'
+                      ? piecesStyle.whitePieceClass
+                      : piecesStyle.blackPieceClass
+                  }`}
+                >
+                  {piecesStyle.pieceMap[pieceKey]}
+                </span>
+              )}
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
 }
 
 interface ChessSectionViewProps {
@@ -56,114 +265,6 @@ interface ChessSectionViewProps {
   ) => void;
 }
 
-const PIECE_VALUES: Record<string, number> = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900,
-  k: 20000,
-};
-
-function evaluateBoardPosition(game: Chess): number {
-  if (game.isCheckmate()) {
-    return game.turn() === 'w' ? -99999 : 99999;
-  }
-  if (game.isDraw()) return 0;
-
-  const board = game.board();
-  let score = 0;
-
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const piece = board[r][c];
-      if (!piece) continue;
-      const base = PIECE_VALUES[piece.type] || 0;
-      const centerBonus =
-        (r >= 2 && r <= 5 && c >= 2 && c <= 5 ? 18 : 0) +
-        (r >= 3 && r <= 4 && c >= 3 && c <= 4 ? 22 : 0);
-      const advancementBonus =
-        piece.type === 'p' ? (piece.color === 'w' ? (6 - r) * 8 : (r - 1) * 8) : 0;
-      const total = base + centerBonus + advancementBonus;
-      score += piece.color === 'w' ? total : -total;
-    }
-  }
-  return score;
-}
-
-function computeBestStockfishBotMove(game: Chess, difficulty: BotDifficulty): Move | null {
-  const legalMoves = game.moves({ verbose: true });
-  if (legalMoves.length === 0) return null;
-
-  if (difficulty === 'beginner') {
-    const captures = legalMoves.filter((m) => m.captured);
-    if (captures.length > 0 && Math.random() < 0.4) {
-      return captures[Math.floor(Math.random() * captures.length)];
-    }
-    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
-  }
-
-  const depthByDifficulty: Record<BotDifficulty, number> = {
-    beginner: 1,
-    intermediate: 1,
-    advanced: 2,
-    expert: 3,
-  };
-  const maxDepth = depthByDifficulty[difficulty];
-
-  function minimax(
-    position: Chess,
-    depth: number,
-    alpha: number,
-    beta: number,
-    maximizingPlayer: boolean
-  ): number {
-    if (depth === 0 || position.isGameOver()) {
-      return evaluateBoardPosition(position);
-    }
-    const moves = position.moves({ verbose: true });
-    if (maximizingPlayer) {
-      let maxEval = -Infinity;
-      for (const mv of moves) {
-        position.move(mv);
-        const evaluation = minimax(position, depth - 1, alpha, beta, false);
-        position.undo();
-        maxEval = Math.max(maxEval, evaluation);
-        alpha = Math.max(alpha, evaluation);
-        if (beta <= alpha) break;
-      }
-      return maxEval;
-    } else {
-      let minEval = Infinity;
-      for (const mv of moves) {
-        position.move(mv);
-        const evaluation = minimax(position, depth - 1, alpha, beta, true);
-        position.undo();
-        minEval = Math.min(minEval, evaluation);
-        beta = Math.min(beta, evaluation);
-        if (beta <= alpha) break;
-      }
-      return minEval;
-    }
-  }
-
-  let bestMove = legalMoves[0];
-  let bestScore = Infinity;
-
-  for (const mv of legalMoves) {
-    game.move(mv);
-    const score = minimax(game, maxDepth - 1, -Infinity, Infinity, true);
-    game.undo();
-    const jitter = difficulty === 'intermediate' ? (Math.random() - 0.5) * 35 : 0;
-    if (score + jitter < bestScore) {
-      bestScore = score + jitter;
-      bestMove = mv;
-    }
-  }
-
-  return bestMove;
-}
-
 export function ChessSectionView({
   ageGroup,
   chessXp,
@@ -178,7 +279,7 @@ export function ChessSectionView({
   onEarnChessXp,
 }: ChessSectionViewProps) {
   const [mode, setMode] = useState<'bot' | 'friend' | 'lessons'>('bot');
-  const [difficulty, setDifficulty] = useState<BotDifficulty>('beginner');
+  const [botElo, setBotElo] = useState<BotEloLevel>('1000');
   const [selectedFriendId, setSelectedFriendId] = useState<string>(
     acceptedFriends[0]?.id || ''
   );
@@ -205,13 +306,19 @@ export function ChessSectionView({
   const [legalTargetSquares, setLegalTargetSquares] = useState<Square[]>([]);
   const [moveHistorySan, setMoveHistorySan] = useState<string[]>([]);
   const [statusBanner, setStatusBanner] = useState<string>(
-    'Tu turno con Blancas. Toca una pieza para ver sus movimientos legales.'
+    'Tu turno con Blancas. Arrastra una pieza o haz clic para ver sus movimientos legales.'
   );
 
-  // Estado para Lecciones Interactivas de Ajedrez
-  const [activeLesson, setActiveLesson] = useState<ChessLessonInteractive | null>(null);
-  const lessonGameRef = useRef<Chess>(new Chess());
-  const [lessonFen, setLessonFen] = useState<string>('');
+  // Estado para Lecciones Interactivas de Ajedrez (4 lecciones pedagógicas con chess.js)
+  const [activeLesson, setActiveLesson] = useState<ChessLessonInteractive | null>(
+    CHESS_ACADEMY_LESSONS[0] || null
+  );
+  const lessonGameRef = useRef<Chess>(
+    new Chess(CHESS_ACADEMY_LESSONS[0]?.initialFen || undefined)
+  );
+  const [lessonFen, setLessonFen] = useState<string>(
+    CHESS_ACADEMY_LESSONS[0]?.initialFen || ''
+  );
   const [lessonSelectedSq, setLessonSelectedSq] = useState<Square | null>(null);
   const [lessonLegalTargets, setLessonLegalTargets] = useState<Square[]>([]);
   const [lessonSolved, setLessonSolved] = useState<boolean>(false);
@@ -221,8 +328,12 @@ export function ChessSectionView({
   const isTeenDark = ageGroup === '14-18';
   const chessLevelInfo = calculateLevelFromXP(chessXp);
 
-  const resetMatch = (newMode?: 'bot' | 'friend') => {
+  const activeBotConfig =
+    CHESS_BOT_LEVELS.find((b) => b.elo === botElo) || CHESS_BOT_LEVELS[1];
+
+  const resetMatch = (newMode?: 'bot' | 'friend', nextElo?: BotEloLevel) => {
     const targetMode = newMode || mode;
+    const targetElo = nextElo || botElo;
     playRewardSound('pop');
     gameRef.current = new Chess();
     setFen(gameRef.current.fen());
@@ -232,7 +343,7 @@ export function ChessSectionView({
     setCoachDialogue(activeCoach.greetingQuote);
     setStatusBanner(
       targetMode === 'bot'
-        ? 'Partida iniciada contra el Bot Stockfish. Mueven las Blancas.'
+        ? `Partida iniciada contra Bot ${targetElo} ELO. Mueven las Blancas (arrastra o haz clic).`
         : 'Partida en tiempo real con tu amigo iniciada. Mueven las Blancas.'
     );
   };
@@ -240,21 +351,16 @@ export function ChessSectionView({
   const handleAskCoachHint = () => {
     playRewardSound('pop');
     if (mode === 'lessons' && activeLesson) {
-      const msg = `${activeCoach.name} (${activeCoach.personality}): "Observa el objetivo: ${activeLesson.objectiveText} (Jugada clave: ${activeLesson.targetMoveSan[0]})"`;
+      const msg = `${activeCoach.name} (${activeCoach.personality}): "Observa la consigna: ${activeLesson.objectiveText} (Jugada ganadora: ${activeLesson.targetMoveSan[0]})"`;
       setCoachDialogue(msg);
       speakSpanishText(msg);
       return;
     }
 
     const game = gameRef.current;
-    const moves = game.moves({ verbose: true });
-    if (moves.length === 0) return;
-    const captureMove = moves.find((m) => m.captured);
-    const centerMove = moves.find((m) =>
-      ['e4', 'd4', 'f3', 'c3', 'e5', 'd5'].includes(m.to)
-    );
-    const suggested = captureMove || centerMove || moves[0];
-    const hintText = `${activeCoach.hintQuote} Te sugiero considerar mover de ${suggested.from} a ${suggested.to} (${suggested.san}).`;
+    const bestMoveForPlayer = computeRealChessBotMove(game, '2000');
+    if (!bestMoveForPlayer) return;
+    const hintText = `${activeCoach.hintQuote} Mi cálculo táctico sugiere mover de ${bestMoveForPlayer.from} a ${bestMoveForPlayer.to} (${bestMoveForPlayer.san}).`;
     setCoachDialogue(hintText);
     speakSpanishText(hintText);
   };
@@ -268,104 +374,122 @@ export function ChessSectionView({
     onEarnChessXp(50, undefined, 8);
   };
 
-  const handleSquareClick = (sq: Square) => {
+  const executeMatchMove = (fromSq: Square, toSq: Square): boolean => {
     const game = gameRef.current;
-    if (game.isGameOver()) return;
+    if (game.isGameOver()) return false;
+    if (mode === 'bot' && game.turn() !== 'w') return false;
+    if (mode === 'friend' && acceptedFriends.length === 0) return false;
 
-    if (mode === 'bot' && game.turn() !== 'w') return;
-    if (mode === 'friend' && acceptedFriends.length === 0) return;
+    try {
+      const move = game.move({
+        from: fromSq,
+        to: toSq,
+        promotion: 'q',
+      });
+      if (!move) return false;
 
-    if (selectedSquare && legalTargetSquares.includes(sq)) {
-      try {
-        const move = game.move({
-          from: selectedSquare,
-          to: sq,
-          promotion: 'q',
-        });
-        if (move) {
-          playRewardSound('pop');
-          setFen(game.fen());
-          setMoveHistorySan([...game.history()]);
-          setSelectedSquare(null);
-          setLegalTargetSquares([]);
+      playRewardSound('pop');
+      setFen(game.fen());
+      setMoveHistorySan([...game.history()]);
+      setSelectedSquare(null);
+      setLegalTargetSquares([]);
 
-          if (game.isCheckmate()) {
-            playRewardSound('fanfare');
-            const winner = game.turn() === 'w' ? 'Negras' : 'Blancas';
-            setCoachDialogue(activeCoach.victoryQuote);
-            setStatusBanner(
-              `¡Jaque Mate! Ganan las ${winner}. (+50 XP y +8 Gemas)`
-            );
-            onEarnChessXp(50, undefined, 8);
-            return;
-          }
-          if (game.isDraw()) {
-            setStatusBanner('Partida finalizada en Tablas. (+20 XP y +5 Gemas)');
-            onEarnChessXp(20, undefined, 5);
-            return;
-          }
-
-          if (move.captured) {
-            setCoachDialogue(
-              `¡Buena captura en ${move.to}! Mantén tus piezas protegidas.`
-            );
-          }
-
-          if (mode === 'bot') {
-            setStatusBanner('El Bot Stockfish está calculando su jugada...');
-            setTimeout(() => {
-              const botMove = computeBestStockfishBotMove(game, difficulty);
-              if (botMove) {
-                game.move(botMove);
-                setFen(game.fen());
-                setMoveHistorySan([...game.history()]);
-                if (game.isCheckmate()) {
-                  playRewardSound('wrong');
-                  setCoachDialogue(activeCoach.mistakeQuote);
-                  setStatusBanner(
-                    '¡Jaque Mate del Bot! Pulsa Nueva Partida para la revancha.'
-                  );
-                } else if (game.inCheck()) {
-                  playRewardSound('wrong');
-                  setCoachDialogue(
-                    `${activeCoach.mistakeQuote} ¡Tu Rey está en Jaque, defiende o mueve tu Rey!`
-                  );
-                  setStatusBanner('¡Atención! Tu Rey está en Jaque. Protégelo.');
-                } else {
-                  setStatusBanner(
-                    `El Bot jugó ${botMove.san}. Es tu turno con Blancas.`
-                  );
-                }
-              }
-            }, 420);
-          } else {
-            const turnLabel =
-              game.turn() === 'w' ? 'Blancas (Tú)' : 'Negras (Tu Amigo)';
-            setStatusBanner(
-              game.inCheck()
-                ? `¡Jaque! Turno de ${turnLabel}.`
-                : `Jugada ${move.san} registrada en tiempo real. Turno de ${turnLabel}.`
-            );
-          }
-          return;
-        }
-      } catch {
-        // Ignore invalid move
+      if (game.isCheckmate()) {
+        playRewardSound('fanfare');
+        const winner = game.turn() === 'w' ? 'Negras' : 'Blancas';
+        setCoachDialogue(activeCoach.victoryQuote);
+        setStatusBanner(`¡Jaque Mate! Ganan las ${winner}. (+50 XP y +8 Gemas)`);
+        onEarnChessXp(50, undefined, 8);
+        return true;
       }
-    }
+      if (game.isDraw()) {
+        setStatusBanner('Partida finalizada en Tablas. (+20 XP y +5 Gemas)');
+        onEarnChessXp(20, undefined, 5);
+        return true;
+      }
 
+      if (move.captured) {
+        setCoachDialogue(
+          `¡Buena captura en ${move.to} (${move.san})! Mantén tus piezas coordinadas.`
+        );
+      }
+
+      if (mode === 'bot') {
+        setStatusBanner(
+          `El ${activeBotConfig.title} está calculando su jugada...`
+        );
+        setTimeout(() => {
+          const botMove = computeRealChessBotMove(game, botElo);
+          if (botMove) {
+            game.move(botMove);
+            setFen(game.fen());
+            setMoveHistorySan([...game.history()]);
+            if (game.isCheckmate()) {
+              playRewardSound('wrong');
+              setCoachDialogue(activeCoach.mistakeQuote);
+              setStatusBanner(
+                `¡Jaque Mate del ${activeBotConfig.title} (${botMove.san})! Pulsa Nueva Partida para la revancha.`
+              );
+            } else if (game.inCheck()) {
+              playRewardSound('wrong');
+              setCoachDialogue(
+                `${activeCoach.mistakeQuote} ¡Tu Rey está en Jaque tras ${botMove.san}, defiende o mueve tu Rey!`
+              );
+              setStatusBanner(
+                `¡Atención! El Bot (${botElo} ELO) jugó ${botMove.san} Jaque. Protege a tu Rey.`
+              );
+            } else {
+              setStatusBanner(
+                `El Bot (${botElo} ELO) jugó ${botMove.san}. Es tu turno con Blancas.`
+              );
+            }
+          }
+        }, 260);
+      } else {
+        const turnLabel =
+          game.turn() === 'w' ? 'Blancas (Tú)' : 'Negras (Tu Amigo)';
+        setStatusBanner(
+          game.inCheck()
+            ? `¡Jaque! Turno de ${turnLabel}.`
+            : `Jugada ${move.san} registrada. Turno de ${turnLabel}.`
+        );
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const selectMatchSquare = (sq: Square) => {
+    const game = gameRef.current;
     const pieceOnSq = game.get(sq);
     if (pieceOnSq && pieceOnSq.color === game.turn()) {
-      playRewardSound('pop');
       setSelectedSquare(sq);
       const moves = game.moves({ square: sq, verbose: true });
       setLegalTargetSquares(moves.map((m) => m.to as Square));
     } else {
-      if (selectedSquare) {
-        setCoachDialogue(activeCoach.mistakeQuote);
-      }
       setSelectedSquare(null);
       setLegalTargetSquares([]);
+    }
+  };
+
+  const handleSquareClick = (sq: Square) => {
+    const game = gameRef.current;
+    if (game.isGameOver()) return;
+    if (mode === 'bot' && game.turn() !== 'w') return;
+    if (mode === 'friend' && acceptedFriends.length === 0) return;
+
+    if (selectedSquare && legalTargetSquares.includes(sq)) {
+      if (executeMatchMove(selectedSquare, sq)) {
+        return;
+      }
+    }
+    selectMatchSquare(sq);
+  };
+
+  const handleMatchPieceDrop = (fromSq: Square, toSq: Square) => {
+    if (!executeMatchMove(fromSq, toSq)) {
+      setCoachDialogue(activeCoach.mistakeQuote);
     }
   };
 
@@ -378,50 +502,57 @@ export function ChessSectionView({
     setLessonLegalTargets([]);
     setLessonSolved(false);
     setLessonFeedback(null);
-    setCoachDialogue(
-      `${activeCoach.name}: "${lesson.objectiveText}"`
-    );
+    setCoachDialogue(`${activeCoach.name}: "${lesson.objectiveText}"`);
   };
 
-  const handleLessonSquareClick = (sq: Square) => {
-    if (!activeLesson || lessonSolved) return;
+  const executeLessonMove = (fromSq: Square, toSq: Square): boolean => {
+    if (!activeLesson || lessonSolved) return false;
     const lGame = lessonGameRef.current;
 
-    if (lessonSelectedSq && lessonLegalTargets.includes(sq)) {
-      try {
-        const move = lGame.move({
-          from: lessonSelectedSq,
-          to: sq,
-          promotion: 'q',
-        });
-        if (move) {
-          setLessonSelectedSq(null);
-          setLessonLegalTargets([]);
-          if (activeLesson.targetMoveSan.includes(move.san)) {
-            playRewardSound('fanfare');
-            setLessonFen(lGame.fen());
-            setLessonSolved(true);
-            setCoachDialogue(activeCoach.victoryQuote);
-            setLessonFeedback(
-              `${activeLesson.explanation} (+${activeLesson.xpReward} XP y +5 Gemas)`
-            );
-            onEarnChessXp(activeLesson.xpReward, activeLesson.id, 5);
-          } else {
-            playRewardSound('wrong');
-            lGame.undo();
-            setLessonFen(lGame.fen());
-            setCoachDialogue(activeCoach.mistakeQuote);
-            setLessonFeedback(
-              `Jugaste ${move.san}. ${activeCoach.mistakeQuote} Busca: ${activeLesson.objectiveText}`
-            );
-          }
-          return;
-        }
-      } catch {
-        // invalid
-      }
-    }
+    try {
+      const move = lGame.move({
+        from: fromSq,
+        to: toSq,
+        promotion: 'q',
+      });
+      if (!move) return false;
 
+      setLessonSelectedSq(null);
+      setLessonLegalTargets([]);
+
+      const normalizedSan = move.san.replace(/[+#]/g, '');
+      const isCorrectMove = activeLesson.targetMoveSan.some(
+        (target) =>
+          target === move.san || target.replace(/[+#]/g, '') === normalizedSan
+      );
+
+      if (isCorrectMove) {
+        playRewardSound('fanfare');
+        setLessonFen(lGame.fen());
+        setLessonSolved(true);
+        setCoachDialogue(activeCoach.victoryQuote);
+        setLessonFeedback(
+          `${activeLesson.explanation} (+${activeLesson.xpReward} XP y +5 Gemas)`
+        );
+        onEarnChessXp(activeLesson.xpReward, activeLesson.id, 5);
+      } else {
+        playRewardSound('wrong');
+        lGame.undo();
+        setLessonFen(lGame.fen());
+        setCoachDialogue(activeCoach.mistakeQuote);
+        setLessonFeedback(
+          `Jugaste ${move.san}, pero no cumple la consigna. ${activeLesson.objectiveText}`
+        );
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const selectLessonSquare = (sq: Square) => {
+    if (!activeLesson || lessonSolved) return;
+    const lGame = lessonGameRef.current;
     const piece = lGame.get(sq);
     if (piece && piece.color === lGame.turn()) {
       setLessonSelectedSq(sq);
@@ -433,85 +564,18 @@ export function ChessSectionView({
     }
   };
 
-  const renderInteractiveBoard = (
-    currentFen: string,
-    activeSq: Square | null,
-    targets: Square[],
-    onSqClick: (sq: Square) => void
-  ) => {
-    const tempChess = new Chess(currentFen);
-    const boardMatrix = tempChess.board();
-    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const handleLessonSquareClick = (sq: Square) => {
+    if (!activeLesson || lessonSolved) return;
+    if (lessonSelectedSq && lessonLegalTargets.includes(sq)) {
+      if (executeLessonMove(lessonSelectedSq, sq)) {
+        return;
+      }
+    }
+    selectLessonSquare(sq);
+  };
 
-    return (
-      <div
-        className={`w-full max-w-[440px] aspect-square mx-auto rounded-2xl overflow-hidden border-4 ${activeBoardTheme.boardBorderClass} shadow-lg grid grid-cols-8 grid-rows-8 select-none`}
-        data-testid="interactive-chessboard"
-        data-board-theme={activeBoardTheme.id}
-        data-pieces-style={activePiecesStyle.id}
-      >
-        {boardMatrix.map((row, rIdx) =>
-          row.map((cell, cIdx) => {
-            const sqName = `${files[cIdx]}${8 - rIdx}` as Square;
-            const isLight = (rIdx + cIdx) % 2 === 0;
-            const isSelected = activeSq === sqName;
-            const isTarget = targets.includes(sqName);
-            const pieceKey = cell
-              ? (`${cell.color}${cell.type}` as keyof typeof activePiecesStyle.pieceMap)
-              : null;
-
-            return (
-              <button
-                key={sqName}
-                type="button"
-                onClick={() => onSqClick(sqName)}
-                aria-label={`Casilla ${sqName}${cell ? ` con pieza ${cell.color}${cell.type}` : ''}`}
-                className={`relative flex items-center justify-center transition-colors ${
-                  isSelected
-                    ? 'bg-yellow-300 ring-2 ring-inset ring-amber-600'
-                    : isLight
-                    ? activeBoardTheme.lightSquareClass
-                    : activeBoardTheme.darkSquareClass
-                }`}
-              >
-                {cIdx === 0 && (
-                  <span
-                    className={`absolute top-0.5 left-1 text-[9px] font-mono font-bold opacity-70 ${activeBoardTheme.coordTextClass}`}
-                  >
-                    {8 - rIdx}
-                  </span>
-                )}
-                {rIdx === 7 && (
-                  <span
-                    className={`absolute bottom-0.5 right-1 text-[9px] font-mono font-bold opacity-70 ${activeBoardTheme.coordTextClass}`}
-                  >
-                    {files[cIdx]}
-                  </span>
-                )}
-                {isTarget && (
-                  <span
-                    className={`w-3.5 h-3.5 rounded-full ${
-                      cell ? 'ring-4 ring-rose-500/80' : 'bg-emerald-900/45'
-                    }`}
-                  />
-                )}
-                {pieceKey && (
-                  <span
-                    className={`text-2xl sm:text-4xl leading-none select-none ${
-                      cell?.color === 'w'
-                        ? activePiecesStyle.whitePieceClass
-                        : activePiecesStyle.blackPieceClass
-                    }`}
-                  >
-                    {activePiecesStyle.pieceMap[pieceKey]}
-                  </span>
-                )}
-              </button>
-            );
-          })
-        )}
-      </div>
-    );
+  const handleLessonPieceDrop = (fromSq: Square, toSq: Square) => {
+    executeLessonMove(fromSq, toSq);
   };
 
   const unlockedCoaches = CHESS_COACHES_CATALOG.filter(
@@ -519,7 +583,7 @@ export function ChessSectionView({
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="chess-section-root">
       {/* Cabecera de la Academia y Club de Ajedrez */}
       <section
         className={`rounded-[34px] p-6 sm:p-8 border ${
@@ -533,7 +597,10 @@ export function ChessSectionView({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="text-xs font-extrabold text-emerald-500 flex items-center gap-2">
-              <span>Academia de Ajedrez · Tablero: {activeBoardTheme.name} · Fichas: {activePiecesStyle.name}</span>
+              <span>
+                Academia de Ajedrez · Tablero: {activeBoardTheme.name} · Fichas:{' '}
+                {activePiecesStyle.name}
+              </span>
             </div>
             <h1
               className={`font-display font-black ${
@@ -542,14 +609,17 @@ export function ChessSectionView({
             >
               {isYoungKid
                 ? '¡Juega al Ajedrez Mágico!'
-                : 'Club de Ajedrez: Bot, Amigos y Lecciones'}
+                : 'Club de Ajedrez: Bots (200, 1000 y 2000 ELO), Amigos y Lecciones'}
             </h1>
             <p
               className={`text-sm ${
                 isTeenDark ? 'text-slate-300' : 'text-slate-600'
               }`}
             >
-              Gana <strong>+8 gemas</strong> al vencer en partidas y <strong>+5 gemas</strong> en cada lección. Tu entrenador interactivo <strong>{activeCoach.name}</strong> te acompaña en cada jugada.
+              Mueve las piezas <strong>arrastrándolas (Drag &amp; Drop)</strong> o{' '}
+              <strong>haciendo clic</strong>. Gana <strong>+8 gemas</strong> al vencer
+              en partidas y <strong>+5 gemas</strong> en cada lección con tu
+              entrenador <strong>{activeCoach.name}</strong>.
             </p>
           </div>
 
@@ -651,9 +721,9 @@ export function ChessSectionView({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-200/40">
           <button
             type="button"
+            data-testid="chess-mode-bot"
             onClick={() => {
               setMode('bot');
-              setActiveLesson(null);
               resetMatch('bot');
             }}
             className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 ${
@@ -666,18 +736,20 @@ export function ChessSectionView({
           >
             <Bot className="w-6 h-6 shrink-0" />
             <div>
-              <div className="font-bold text-sm">Jugar contra Bot Stockfish</div>
+              <div className="font-bold text-sm">
+                Jugar contra Bots (200, 1000, 2000 ELO)
+              </div>
               <div className="text-xs opacity-80">
-                Principiante, Intermedio, Avanzado, Experto
+                Motor Minimax Alfa-Beta + Tablas Posicionales
               </div>
             </div>
           </button>
 
           <button
             type="button"
+            data-testid="chess-mode-friend"
             onClick={() => {
               setMode('friend');
-              setActiveLesson(null);
               resetMatch('friend');
             }}
             className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 ${
@@ -699,9 +771,13 @@ export function ChessSectionView({
 
           <button
             type="button"
+            data-testid="chess-mode-lessons"
             onClick={() => {
               playRewardSound('pop');
               setMode('lessons');
+              if (!activeLesson && CHESS_ACADEMY_LESSONS[0]) {
+                openChessLesson(CHESS_ACADEMY_LESSONS[0]);
+              }
             }}
             className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 ${
               mode === 'lessons'
@@ -713,16 +789,16 @@ export function ChessSectionView({
           >
             <BookOpen className="w-6 h-6 shrink-0" />
             <div>
-              <div className="font-bold text-sm">Lecciones de Ajedrez</div>
+              <div className="font-bold text-sm">Lecciones Pedagógicas (4 Niveles)</div>
               <div className="text-xs opacity-80">
-                Progreso: {completedChessLessonIds.length}/{CHESS_ACADEMY_LESSONS.length} niveles
+                Mate en 1, Capturas, Tenedor y Salir del Jaque
               </div>
             </div>
           </button>
         </div>
       </section>
 
-      {/* VISTA 1 y 2: TABLERO CONTRA EL BOT O CON UN AMIGO */}
+      {/* VISTA 1 y 2: TABLERO CONTRA EL BOT (200 / 1000 / 2000 ELO) O CON UN AMIGO */}
       {(mode === 'bot' || mode === 'friend') && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div
@@ -739,13 +815,21 @@ export function ChessSectionView({
                   Aún no tienes amigos aceptados para jugar
                 </h2>
                 <p className="text-sm opacity-75 max-w-md mx-auto">
-                  Solo los amigos de tu misma etapa que hayan aceptado tu solicitud de amistad pueden jugar contigo en tiempo real. Ve a la pestaña Amigos para agregar un compañero o juega contra el Bot Stockfish.
+                  Solo los amigos de tu misma etapa que hayan aceptado tu solicitud de amistad pueden jugar contigo en tiempo real. Ve a la pestaña Amigos para agregar un compañero o juega contra los Bots de 200, 1000 y 2000 ELO.
                 </p>
               </div>
             ) : (
               <div className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm font-bold">{statusBanner}</div>
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-bold">{statusBanner}</div>
+                    <div className="text-[11px] opacity-75 flex items-center gap-1">
+                      <MoveIcon className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>
+                        Puedes mover arrastrando la pieza (Drag &amp; Drop) o haciendo clic en origen y destino.
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     {moveHistorySan.length >= 4 && (
                       <button
@@ -768,12 +852,17 @@ export function ChessSectionView({
                   </div>
                 </div>
 
-                {renderInteractiveBoard(
-                  fen,
-                  selectedSquare,
-                  legalTargetSquares,
-                  handleSquareClick
-                )}
+                <InteractiveChessboard
+                  fen={fen}
+                  selectedSquare={selectedSquare}
+                  legalTargetSquares={legalTargetSquares}
+                  onSquareClick={handleSquareClick}
+                  onPieceDropMove={handleMatchPieceDrop}
+                  onStartPieceDrag={selectMatchSquare}
+                  boardTheme={activeBoardTheme}
+                  piecesStyle={activePiecesStyle}
+                  testId="interactive-chessboard"
+                />
               </div>
             )}
           </div>
@@ -786,38 +875,49 @@ export function ChessSectionView({
             }`}
           >
             {mode === 'bot' ? (
-              <div className="space-y-3">
-                <h2 className="font-bold text-base">
-                  Nivel de Dificultad del Bot Stockfish
-                </h2>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {(
-                    [
-                      { id: 'beginner', label: 'Principiante', desc: 'Ideal para aprender' },
-                      { id: 'intermediate', label: 'Intermedio', desc: 'Táctica básica' },
-                      { id: 'advanced', label: 'Avanzado', desc: 'Cálculo posicional' },
-                      { id: 'expert', label: 'Experto', desc: 'Máxima profundidad' },
-                    ] as const
-                  ).map((lvl) => (
-                    <button
-                      key={lvl.id}
-                      type="button"
-                      onClick={() => {
-                        setDifficulty(lvl.id);
-                        resetMatch('bot');
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        difficulty === lvl.id
-                          ? 'border-emerald-500 bg-emerald-500/15 font-bold'
-                          : isTeenDark
-                          ? 'border-slate-800 bg-slate-800/60'
-                          : 'border-slate-200 bg-slate-50'
-                      }`}
-                    >
-                      <div className="text-sm font-bold">{lvl.label}</div>
-                      <div className="text-xs opacity-70">{lvl.desc}</div>
-                    </button>
-                  ))}
+              <div className="space-y-3" data-testid="chess-bot-elo-selector">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-bold text-base">
+                    Nivel de ELO Real del Bot
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-xs font-extrabold">
+                    Activo: {botElo} ELO
+                  </span>
+                </div>
+                <div className="space-y-2.5">
+                  {CHESS_BOT_LEVELS.map((lvl) => {
+                    const isSelected = botElo === lvl.elo;
+                    return (
+                      <button
+                        key={lvl.elo}
+                        type="button"
+                        data-testid={`bot-elo-${lvl.elo}`}
+                        onClick={() => {
+                          setBotElo(lvl.elo);
+                          resetMatch('bot', lvl.elo);
+                        }}
+                        className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-500/15 shadow-xs'
+                            : isTeenDark
+                            ? 'border-slate-800 bg-slate-800/60 hover:border-slate-700'
+                            : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-black">
+                            {lvl.title} — {lvl.subtitle}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-white text-[11px] font-mono font-bold">
+                            Prof. {lvl.depth}
+                          </span>
+                        </div>
+                        <p className="text-xs opacity-80 mt-1 leading-relaxed">
+                          {lvl.description}
+                        </p>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -860,7 +960,9 @@ export function ChessSectionView({
               </div>
               <div
                 className={`p-3.5 rounded-2xl min-h-[100px] max-h-[180px] overflow-y-auto font-mono text-xs ${
-                  isTeenDark ? 'bg-slate-950 text-slate-300' : 'bg-slate-50 text-slate-700'
+                  isTeenDark
+                    ? 'bg-slate-950 text-slate-300'
+                    : 'bg-slate-50 text-slate-700'
                 }`}
               >
                 {moveHistorySan.length === 0
@@ -877,7 +979,7 @@ export function ChessSectionView({
         </div>
       )}
 
-      {/* VISTA 3: LECCIONES DE AJEDREZ PROGRESIVAS */}
+      {/* VISTA 3: LECCIONES DE AJEDREZ CON SENTIDO PEDAGÓGICO Y DRAG & DROP */}
       {mode === 'lessons' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div
@@ -888,10 +990,10 @@ export function ChessSectionView({
             }`}
           >
             <h2 className="text-xl font-bold font-display">
-              Ruta de Lecciones de Ajedrez (+5 Gemas por Nivel)
+              Curso de Ajedrez: 4 Lecciones Pedagógicas (+5 Gemas por Nivel)
             </h2>
             <p className="text-xs opacity-75">
-              Todas las lecciones empiezan en el Nivel 1; completa cada lección en el tablero con ayuda de {activeCoach.name} para desbloquear la siguiente.
+              Aprende sobre el tablero real: Jaque Mate en 1, capturar piezas indefensas, ataque doble (tenedor de caballo) y salir del jaque.
             </p>
 
             <div className="space-y-3">
@@ -903,13 +1005,17 @@ export function ChessSectionView({
                   completedChessLessonIds
                 );
                 const completed = completedChessLessonIds.includes(lesson.id);
+                const isSelected = activeLesson?.id === lesson.id;
 
                 return (
                   <div
                     key={lesson.id}
-                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-                      completed
-                        ? 'border-emerald-500/60 bg-emerald-500/10'
+                    data-testid={`chess-academy-lesson-${lesson.levelNumber}`}
+                    className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-4 ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : completed
+                        ? 'border-emerald-500/50 bg-emerald-500/5'
                         : unlocked
                         ? isTeenDark
                           ? 'border-slate-700 bg-slate-800/70'
@@ -988,16 +1094,28 @@ export function ChessSectionView({
                   </button>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs sm:text-sm font-medium">
-                  <strong>Objetivo en el tablero:</strong> {activeLesson.objectiveText}
+                {/* Consigna clara arriba del tablero */}
+                <div
+                  data-testid="chess-lesson-objective-banner"
+                  className="p-4 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-xs sm:text-sm font-bold space-y-1"
+                >
+                  <div>{activeLesson.objectiveText}</div>
+                  <div className="text-[11px] opacity-80 font-medium">
+                    Arrastra la pieza hasta la casilla destino o haz clic en las casillas.
+                  </div>
                 </div>
 
-                {renderInteractiveBoard(
-                  lessonFen,
-                  lessonSelectedSq,
-                  lessonLegalTargets,
-                  handleLessonSquareClick
-                )}
+                <InteractiveChessboard
+                  fen={lessonFen}
+                  selectedSquare={lessonSelectedSq}
+                  legalTargetSquares={lessonLegalTargets}
+                  onSquareClick={handleLessonSquareClick}
+                  onPieceDropMove={handleLessonPieceDrop}
+                  onStartPieceDrag={selectLessonSquare}
+                  boardTheme={activeBoardTheme}
+                  piecesStyle={activePiecesStyle}
+                  testId="lesson-interactive-chessboard"
+                />
 
                 {lessonFeedback && (
                   <div

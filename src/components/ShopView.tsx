@@ -232,7 +232,7 @@ export function ShopView({
         type: 'encourage',
         text:
           res.reason ||
-          '¡Sigue sumando gemas en lecciones, ajedrez, juegos y rutinas!',
+          '¡Sigue sumando gemas en lecciones, ajedrez y videojuegos!',
       });
       return;
     }
@@ -312,15 +312,8 @@ export function ShopView({
             </h1>
             <p className="text-xs sm:text-sm opacity-80 leading-relaxed">
               Gana gemas al <strong>completar lecciones (+5)</strong>,{' '}
-              <strong>ganar partidas de ajedrez (+8)</strong>,{' '}
-              <strong>ganar en los videojuegos (+5)</strong>
-              {profile.age >= 10 && (
-                <>
-                  {' '}
-                  y <strong>completar tus rutinas diarias (+5)</strong>
-                </>
-              )}
-              . Todo lo que compres se guarda en tu perfil para siempre.
+              <strong>ganar partidas de ajedrez (+8)</strong> y{' '}
+              <strong>ganar en los videojuegos (+5)</strong>. Todo lo que compres se guarda en tu perfil para siempre.
             </p>
           </div>
 

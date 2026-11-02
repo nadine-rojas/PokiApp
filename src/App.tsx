@@ -6,19 +6,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   BookOpen,
-  Compass,
-  Users,
-  UserCircle2,
-  Crown,
-  CalendarCheck2,
-  Gamepad2,
-  ShoppingBag,
+  Home,
+  Heart,
+  User,
   Gem,
   Flame,
   Zap,
   LogOut,
   Trophy,
-  Sparkles,
   Sun,
   Moon,
 } from 'lucide-react';
@@ -33,8 +28,6 @@ import {
   UserProfile,
   ChildMood,
   canCustomizeWallpaper,
-  canAccessRoutines,
-  completeDailyRoutineReward,
   calculateActivityGemReward,
   createFreshUserAccount,
   ensureShopDefaultsOnProfile,
@@ -48,7 +41,6 @@ import { RegistrationScreen } from './components/RegistrationModal';
 import { LearnView } from './components/LearnView';
 import { LibraryView } from './components/LibraryView';
 import { ChessSectionView } from './components/ChessSectionView';
-import { RoutinesView } from './components/RoutinesView';
 import { GamesView } from './components/GamesView';
 import { FriendsChatView, FriendshipRecord } from './components/FriendsChatView';
 import { ProfileParentalView } from './components/ProfileParentalView';
@@ -93,6 +85,7 @@ export default function App() {
         if (params.get('autostart') === '1') {
           const ageParam = Number(params.get('age')) || 10;
           const nameParam = params.get('name') || 'Explorador';
+          const coursesParam = params.get('courses');
           const fresh = createFreshUserAccount({
             username: nameParam.toLowerCase(),
             name: nameParam,
@@ -101,6 +94,11 @@ export default function App() {
             parentPin: '1234',
             parentalApproved: true,
           });
+          if (coursesParam) {
+            fresh.enrolledSubjects = coursesParam
+              .split(',')
+              .filter(Boolean) as CourseSubject[];
+          }
           localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify([fresh]));
           localStorage.setItem(ACTIVE_USER_STORAGE_KEY, fresh.id);
           return [fresh];
@@ -170,7 +168,6 @@ export default function App() {
   const rawProfile = accounts.find((a) => a.id === activeUserId) || null;
   const currentProfile = rawProfile ? ensureShopDefaultsOnProfile(rawProfile) : null;
 
-  // Suscripción en tiempo real a la red entre navegadores y dispositivos (WebSocket + MQTT + BroadcastChannel)
   useEffect(() => {
     const unsubscribe = realtimeNetwork.subscribe((state) => {
       setNetworkState({
@@ -182,7 +179,6 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Sincroniza automáticamente el perfil y Código de Amigo (LUMI-XXXX) en la red global apenas se registra o inicia sesión
   useEffect(() => {
     if (currentProfile) {
       realtimeNetwork.syncUserProfile(currentProfile);
@@ -297,15 +293,23 @@ export default function App() {
     );
   }
 
-  // Barra de navegación inferior flotante en forma de píldora según etapa y edad
-  const allowedNavTabs = getNavigationTabsForAgeGroup(
+  // Barra inferior minimalista con máximo 5 íconos (4 secciones + Toggle Claro/Oscuro)
+  const bottomBarTabIds = getNavigationTabsForAgeGroup(
     currentProfile.ageGroup,
     currentProfile.age
   );
-  const currentSafeTab: NavTabId =
-    activeTab === 'shop' || allowedNavTabs.includes(activeTab)
-      ? activeTab
-      : 'learn';
+  const validViewTabs: NavTabId[] = [
+    'learn',
+    'library',
+    'friends',
+    'profile',
+    'chess',
+    'games',
+    'shop',
+  ];
+  const currentSafeTab: NavTabId = validViewTabs.includes(activeTab)
+    ? activeTab
+    : 'learn';
 
   const handleCompleteLesson = (
     lessonId: string,
@@ -422,47 +426,20 @@ export default function App() {
     }));
   };
 
-  const handleAddRoutine = (title: string, time: string, category: string) => {
-    updateCurrentProfile((prev) => ({
-      ...prev,
-      routines: [
-        ...prev.routines,
-        {
-          id: `rt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          title,
-          time,
-          category,
-          completedToday: false,
-        },
-      ],
-    }));
-  };
-
-  const handleCompleteRoutine = (routineId: string) => {
+  const handleToggleEnrolledSubject = (subject: CourseSubject) => {
     updateCurrentProfile((prev) => {
-      const target = prev.routines.find((r) => r.id === routineId);
-      if (!target || target.completedToday) return prev;
-      const reward = completeDailyRoutineReward(false, prev.gems);
-      const nextMedals = new Set(prev.unlockedMedalIds);
-      nextMedals.add('medal-routines-gems');
-
+      const currentList = Array.isArray(prev.enrolledSubjects)
+        ? prev.enrolledSubjects
+        : [];
+      const exists = currentList.includes(subject);
+      const nextList = exists
+        ? currentList.filter((s) => s !== subject)
+        : [...currentList, subject];
       return {
         ...prev,
-        gems: reward.newGemTotal,
-        streak: Math.max(1, prev.streak),
-        unlockedMedalIds: Array.from(nextMedals),
-        routines: prev.routines.map((r) =>
-          r.id === routineId ? { ...r, completedToday: true } : r
-        ),
+        enrolledSubjects: nextList,
       };
     });
-  };
-
-  const handleDeleteRoutine = (routineId: string) => {
-    updateCurrentProfile((prev) => ({
-      ...prev,
-      routines: prev.routines.filter((r) => r.id !== routineId),
-    }));
   };
 
   const handleUpdateChildAgeByParent = (
@@ -488,7 +465,6 @@ export default function App() {
     };
   };
 
-  // Combina los perfiles locales con los perfiles sincronizados en tiempo real desde otros navegadores/dispositivos
   const sameGroupUsersAcrossBrowsers: UserProfile[] = (() => {
     const map = new Map<string, UserProfile>();
     accounts
@@ -527,6 +503,7 @@ export default function App() {
               unlockedMedalIds: [],
               routines: [],
               allowedSubjects: [],
+              enrolledSubjects: [],
               parentEmail: '',
               parentPin: '1234',
               parentalChatApproved: true,
@@ -539,11 +516,9 @@ export default function App() {
     return Array.from(map.values());
   })();
 
-  // Construcción de las amistades reales combinando la red en tiempo real entre navegadores y el respaldo local
   const userFriendships: FriendshipRecord[] = (() => {
     const recordsMap = new Map<string, FriendshipRecord>();
 
-    // 1. Amistades locales de respaldo
     storedFriendships
       .filter(
         (sf) =>
@@ -590,7 +565,6 @@ export default function App() {
         });
       });
 
-    // 2. Amistades sincronizadas en tiempo real entre navegadores/dispositivos (WebSocket + MQTT)
     Object.values(networkState.friendships).forEach((nf) => {
       const isRequester =
         nf.requesterId === currentProfile.id ||
@@ -691,7 +665,6 @@ export default function App() {
     const optimisticId = `fr_opt_${Date.now()}`;
     const peerId = `peer_${Date.now()}`;
 
-    // Actualización optimista inmediata + sincronización en red real (WebSocket / MQTT)
     setStoredFriendships((prev) => [
       ...prev,
       {
@@ -856,57 +829,35 @@ export default function App() {
     );
   };
 
-  const allNavCatalog: Record<
-    NavTabId,
-    { id: NavTabId; label: string; icon: React.ReactNode }
-  > = {
-    learn: {
+  // Los 4 botones principales de navegación con línea fina (strokeWidth={2}) + el 5º botón de Modo Claro/Oscuro
+  const minimalistBottomTabs: {
+    id: NavTabId;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    {
       id: 'learn',
-      label: 'Aprender',
-      icon: <Compass className="w-5 h-5" />,
+      label: 'Inicio',
+      icon: <Home className="w-5 h-5" strokeWidth={2} />,
     },
-    library: {
+    {
       id: 'library',
-      label: 'Biblioteca',
-      icon: <BookOpen className="w-5 h-5" />,
+      label: 'Cuentos',
+      icon: <BookOpen className="w-5 h-5" strokeWidth={2} />,
     },
-    chess: {
-      id: 'chess',
-      label: 'Ajedrez',
-      icon: <Crown className="w-5 h-5" />,
-    },
-    routines: {
-      id: 'routines',
-      label: 'Rutinas',
-      icon: <CalendarCheck2 className="w-5 h-5" />,
-    },
-    games: {
-      id: 'games',
-      label: 'Juegos',
-      icon: <Gamepad2 className="w-5 h-5" />,
-    },
-    friends: {
+    {
       id: 'friends',
       label: 'Amigos',
-      icon: <Users className="w-5 h-5" />,
+      icon: <Heart className="w-5 h-5" strokeWidth={2} />,
     },
-    profile: {
+    {
       id: 'profile',
       label: 'Perfil',
-      icon: <UserCircle2 className="w-5 h-5" />,
+      icon: <User className="w-5 h-5" strokeWidth={2} />,
     },
-    shop: {
-      id: 'shop',
-      label: 'Tienda',
-      icon: <ShoppingBag className="w-5 h-5" />,
-    },
-  };
-
-  const navItemsForGroup = allowedNavTabs.map((id) => allNavCatalog[id]);
+  ].filter((t) => bottomBarTabIds.includes(t.id));
 
   const isYoungKid = currentProfile.ageGroup === '3-6';
-  const isTeenDark = currentProfile.ageGroup === '14-18' || isDarkMode;
-  const routinesVisible = canAccessRoutines(currentProfile.age);
 
   const activeWallpaper =
     WALLPAPER_GALLERY.find((w) => w.id === currentProfile.wallpaperId) ||
@@ -937,7 +888,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen w-full max-w-[100vw] overflow-x-hidden flex flex-col transition-colors duration-200 ${shellBgClass} pb-28`}>
-      {/* TOP BAR LIMPIA Y RESPONSIVA (Con botón real Instalar App, racha, XP y contador de gemas junto al perfil) */}
+      {/* TOP BAR LIMPIA Y RESPONSIVA */}
       <header
         className={`sticky top-0 z-30 backdrop-blur-md border-b px-3 sm:px-8 h-14 flex items-center justify-between gap-2 sm:gap-4 ${headerThemeClass}`}
       >
@@ -958,7 +909,6 @@ export default function App() {
           LumiQuest
         </a>
 
-        {/* Contadores en vivo (Racha y XP) */}
         <div className="hidden md:flex items-center gap-2.5 text-xs font-extrabold tabular-nums">
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-500">
             {isDarkMode ? (
@@ -973,7 +923,6 @@ export default function App() {
           </span>
         </div>
 
-        {/* Botón Real "Instalar App" (PWA) + Contador de Gemas + Perfil */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <PWAInstallButton variant="header" isDark={isDarkMode} />
 
@@ -1013,7 +962,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL (100% Responsive y sin desbordamiento horizontal) */}
+      {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-6xl w-full mx-auto px-3 sm:px-8 py-6 flex-1 min-w-0">
         {currentSafeTab === 'learn' && (
           <LearnView
@@ -1029,6 +978,10 @@ export default function App() {
               updateCurrentProfile((p) => ({ ...p, mood: newMood }))
             }
             allowedSubjects={currentProfile.allowedSubjects}
+            enrolledSubjects={currentProfile.enrolledSubjects}
+            onToggleEnrolledSubject={handleToggleEnrolledSubject}
+            selectedBoardId={currentProfile.selectedBoardId}
+            selectedPiecesId={currentProfile.selectedPiecesId}
             completedLessonIds={currentProfile.completedLessonIds}
             completedBookIds={currentProfile.completedBookIds}
             onlinePeers={sameGroupUsersAcrossBrowsers}
@@ -1036,7 +989,6 @@ export default function App() {
             onCompleteBook={handleCompleteBook}
             onOpenLibrary={() => setActiveTab('library')}
             onOpenChess={() => setActiveTab('chess')}
-            onOpenRoutines={() => setActiveTab('routines')}
             onOpenFriends={() => setActiveTab('friends')}
             onOpenParentalPanel={() => setActiveTab('profile')}
           />
@@ -1065,18 +1017,6 @@ export default function App() {
             }
             onOpenShop={() => setActiveTab('shop')}
             onEarnChessXp={handleEarnChessXp}
-          />
-        )}
-
-        {currentSafeTab === 'routines' && routinesVisible && (
-          <RoutinesView
-            ageGroup={currentProfile.ageGroup}
-            gems={currentProfile.gems}
-            routines={currentProfile.routines}
-            onAddRoutine={handleAddRoutine}
-            onCompleteRoutine={handleCompleteRoutine}
-            onDeleteRoutine={handleDeleteRoutine}
-            onOpenAvatarShop={() => setActiveTab('shop')}
           />
         )}
 
@@ -1163,17 +1103,33 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR FLOTANTE CÁPSULA OSCURA (Imagen 4: cápsula #23222A con ícono activo en círculo violeta #7C69EF + Toggle Claro/Oscuro) */}
-      <div className="fixed bottom-3 left-0 right-0 z-40 px-2 sm:px-4 pointer-events-none flex justify-center">
+      {/* =====================================================================
+          BARRA INFERIOR MINIMALISTA (IDÉNTICA AL 3ER EJEMPLO DE LA IMAGEN DE REFERENCIA):
+          - Cápsula flotante limpia (border-radius: 32px -> rounded-[32px])
+          - Fondo blanco puro en modo claro (bg-white) y gris oscuro limpio en modo oscuro (dark:bg-[#1E1E24])
+          - Sombra suave y máximo 5 íconos minimalistas de línea fina (stroke-width: 2px):
+            1. Inicio / Aprender
+            2. Biblioteca / Cuentos
+            3. Amigos / Chat
+            4. Perfil
+            5. Modo Claro / Oscuro
+          - Botón activo: recuadro redondeado suave color rosa/lila pastel detrás (#F5E6F0),
+            con el ícono y su etiqueta de texto corto debajo en rosa/magenta oscuro (#C84B8A),
+            mientras los demás íconos permanecen en gris oscuro (#333333).
+         ===================================================================== */}
+      <div className="fixed bottom-4 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none flex justify-center">
         <nav
           aria-label="Menú inferior de navegación"
           data-testid="floating-bottom-nav"
-          className="pointer-events-auto rounded-full px-2 sm:px-3.5 py-2 shadow-2xl border border-[#3A3846] bg-[#23222A]/95 text-white flex items-center justify-center gap-1 sm:gap-2 overflow-hidden max-w-[calc(100vw-16px)] backdrop-blur-md"
+          className="pointer-events-auto rounded-[32px] px-3 sm:px-5 py-2.5 bg-white dark:bg-[#1E1E24] border border-slate-200/80 dark:border-slate-800 shadow-[0_12px_36px_rgba(15,23,42,0.12)] flex items-center justify-between gap-2 sm:gap-5 w-full max-w-[460px]"
         >
-          {navItemsForGroup.map((item) => {
+          {minimalistBottomTabs.map((item) => {
             const active =
               currentSafeTab === item.id ||
+              (currentSafeTab === 'chess' && item.id === 'learn') ||
+              (currentSafeTab === 'games' && item.id === 'friends') ||
               (currentSafeTab === 'shop' && item.id === 'profile');
+
             return (
               <button
                 key={item.id}
@@ -1183,26 +1139,25 @@ export default function App() {
                   playRewardSound('pop');
                   setActiveTab(item.id);
                 }}
-                className={`min-h-[42px] px-2.5 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 ${
+                className={`min-w-[64px] sm:min-w-[74px] py-2 px-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                   active
-                    ? 'bg-[#7C69EF] text-white font-black shadow-lg shadow-[#7C69EF]/40 scale-105'
-                    : 'text-slate-300 hover:text-white hover:bg-white/10 font-bold'
+                    ? 'bg-[#F5E6F0] text-[#C84B8A]'
+                    : 'bg-transparent text-[#333333] dark:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-white/5'
                 }`}
               >
                 <span className="shrink-0">{item.icon}</span>
-                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
+                <span
+                  className={`text-[11px] leading-none tracking-tight ${
+                    active ? 'font-bold text-[#C84B8A]' : 'font-medium'
+                  }`}
+                >
                   {item.label}
                 </span>
               </button>
             );
           })}
 
-          <div
-            aria-hidden="true"
-            className="w-px h-6 bg-white/15 mx-0.5 shrink-0"
-          />
-
-          {/* Botón de Modo Claro / Modo Oscuro integrado en la barra inferior flotante */}
+          {/* 5º ÍCONO: Modo Claro / Oscuro */}
           <button
             type="button"
             data-testid="bottom-nav-theme-toggle"
@@ -1213,23 +1168,19 @@ export default function App() {
             title={
               isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'
             }
-            className={`min-h-[42px] px-2.5 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 font-extrabold ${
-              isDarkMode
-                ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
-                : 'bg-white/10 text-slate-200 hover:bg-white/20'
-            }`}
+            className="min-w-[64px] sm:min-w-[74px] py-2 px-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer bg-transparent text-[#333333] dark:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-white/5"
           >
             {isDarkMode ? (
               <>
-                <Sun className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
+                <Sun className="w-5 h-5 shrink-0" strokeWidth={2} />
+                <span className="text-[11px] font-medium leading-none tracking-tight">
                   Claro
                 </span>
               </>
             ) : (
               <>
-                <Moon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                <span className="text-[10px] sm:text-xs tracking-tight whitespace-nowrap leading-none">
+                <Moon className="w-5 h-5 shrink-0" strokeWidth={2} />
+                <span className="text-[11px] font-medium leading-none tracking-tight">
                   Oscuro
                 </span>
               </>
@@ -1262,10 +1213,9 @@ export default function App() {
             <button
               type="button"
               onClick={() => setGraduationCelebrationOpen(false)}
-              className="w-full py-4 rounded-2xl bg-[#84CC16] hover:bg-[#65A30D] text-slate-950 font-black text-base shadow-md flex items-center justify-center gap-2"
+              className="w-full py-4 rounded-2xl bg-[#84CC16] hover:bg-[#65A30D] text-slate-950 font-black text-base shadow-md"
             >
-              <Sparkles className="w-5 h-5" />
-              ¡Entrar a mi Nueva Aventura!
+              ¡Entrar a mi Nueva Etapa (7 a 13 años)!
             </button>
           </div>
         </div>
