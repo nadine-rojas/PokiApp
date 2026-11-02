@@ -25,10 +25,39 @@ export interface NetworkChatMessage {
   senderName: string;
   text: string;
   timestamp: string;
-  attachmentType?: 'gif' | 'drawing';
+  attachmentType?: 'gif' | 'drawing' | 'chess_invite';
   attachmentId?: string;
   attachmentUrl?: string;
   attachmentTitle?: string;
+  chessMatchId?: string;
+}
+
+export interface NetworkChessMatch {
+  id: string;
+  eventType: 'CHESS_INVITE' | 'CHESS_ACTIVE' | 'CHESS_FINISHED' | 'CHESS_DECLINED';
+  hostId: string;
+  hostName: string;
+  hostFriendCode: string;
+  hostAvatarId: string;
+  hostColor: 'w' | 'b';
+  guestId: string;
+  guestName: string;
+  guestFriendCode: string;
+  guestAvatarId: string;
+  guestColor: 'w' | 'b';
+  timeControlId: '3min' | '5min' | '10min' | '15min' | 'unlimited';
+  timeControlLabel: string;
+  initialSeconds: number | null;
+  whiteTimeSeconds: number | null;
+  blackTimeSeconds: number | null;
+  colorPreference: 'w' | 'b' | 'random';
+  status: 'pending_invite' | 'active' | 'completed' | 'declined';
+  fen: string;
+  moveHistorySan: string[];
+  turn: 'w' | 'b';
+  winnerColor?: 'w' | 'b' | 'draw' | null;
+  winReason?: string;
+  updatedAt: number;
 }
 
 export interface NetworkFriendshipRecord {
@@ -76,6 +105,7 @@ interface NetworkDatabase {
   profiles: Record<string, PublicPeerProfile>;
   friendships: Record<string, NetworkFriendshipRecord>;
   rooms: Record<string, NetworkMultiplayerRoom>;
+  chessMatches: Record<string, NetworkChessMatch>;
 }
 
 const DB_FILE_PATH = path.resolve(process.cwd(), '.lumiquest-network-db.json');
@@ -89,6 +119,7 @@ function loadNetworkDb(): NetworkDatabase {
         profiles: parsed.profiles || {},
         friendships: parsed.friendships || {},
         rooms: parsed.rooms || {},
+        chessMatches: parsed.chessMatches || {},
       };
     }
   } catch {
@@ -98,6 +129,7 @@ function loadNetworkDb(): NetworkDatabase {
     profiles: {},
     friendships: {},
     rooms: {},
+    chessMatches: {},
   };
 }
 
@@ -265,6 +297,14 @@ async function startServer() {
           db.rooms[room.roomCode] = room;
           saveNetworkDb(db);
           broadcastState('network:room_updated');
+        } else if (
+          (msg.type === 'CHESS_INVITE' || msg.type === 'chess:upsert') &&
+          msg.match
+        ) {
+          const match = msg.match as NetworkChessMatch;
+          db.chessMatches[match.id] = match;
+          saveNetworkDb(db);
+          broadcastState('CHESS_INVITE');
         }
       } catch {
         // Ignore malformed WS message
@@ -761,6 +801,144 @@ async function startServer() {
     saveNetworkDb(db);
     broadcastState('network:room_updated');
     res.json({ ok: true, room, state: db });
+  });
+
+  // REST API: Send a real-time Chess Match Invitation (CHESS_INVITE) with Timer & Color selection
+  app.post('/api/network/chess-invite', (req, res) => {
+    const { match, friendshipId } = req.body as {
+      match?: NetworkChessMatch;
+      friendshipId?: string;
+    };
+
+    if (!match || !match.id) {
+      res.status(400).json({ ok: false, error: 'Missing chess match payload' });
+      return;
+    }
+
+    const savedMatch: NetworkChessMatch = {
+      ...match,
+      eventType: 'CHESS_INVITE',
+      updatedAt: Date.now(),
+    };
+    db.chessMatches[savedMatch.id] = savedMatch;
+
+    // Also attach an interactive invitation message in the friendship chat if found
+    const targetFriendship =
+      (friendshipId ? db.friendships[friendshipId] : undefined) ||
+      Object.values(db.friendships).find(
+        (f) =>
+          (f.requesterId === savedMatch.hostId &&
+            f.receiverId === savedMatch.guestId) ||
+          (f.requesterId === savedMatch.guestId &&
+            f.receiverId === savedMatch.hostId) ||
+          (savedMatch.guestFriendCode &&
+            (f.receiverCode === savedMatch.guestFriendCode ||
+              f.requesterCode === savedMatch.guestFriendCode))
+      );
+
+    if (targetFriendship) {
+      const inviteMsg: NetworkChatMessage = {
+        id: `msg_chess_${savedMatch.id}`,
+        senderId: savedMatch.hostId,
+        senderName: savedMatch.hostName,
+        text: `♟️ Invitación de Ajedrez: ${savedMatch.timeControlLabel} · Juegas con ${
+          savedMatch.guestColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+        }`,
+        timestamp: new Date().toLocaleTimeString('es-ES', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        attachmentType: 'chess_invite',
+        attachmentId: savedMatch.id,
+        attachmentTitle: `${savedMatch.timeControlLabel} · ${
+          savedMatch.guestColor === 'w' ? 'Blancas' : 'Negras'
+        }`,
+        chessMatchId: savedMatch.id,
+      };
+      const alreadyExists = targetFriendship.chatMessages.some(
+        (m) => m.id === inviteMsg.id
+      );
+      if (!alreadyExists) {
+        targetFriendship.chatMessages.push(inviteMsg);
+        targetFriendship.updatedAt = Date.now();
+      }
+    }
+
+    saveNetworkDb(db);
+    broadcastState('CHESS_INVITE');
+    res.json({ ok: true, match: savedMatch, state: db });
+  });
+
+  // REST API: Accept or decline a real-time Chess Match Invitation
+  app.post('/api/network/chess-respond', (req, res) => {
+    const { matchId, action } = req.body as {
+      matchId: string;
+      action: 'accept' | 'decline';
+    };
+
+    const existing = db.chessMatches[matchId];
+    if (!existing) {
+      res.status(404).json({ ok: false, error: 'Chess match not found' });
+      return;
+    }
+
+    existing.status = action === 'accept' ? 'active' : 'declined';
+    existing.eventType =
+      action === 'accept' ? 'CHESS_ACTIVE' : 'CHESS_DECLINED';
+    existing.updatedAt = Date.now();
+
+    saveNetworkDb(db);
+    broadcastState('CHESS_INVITE');
+    res.json({ ok: true, match: existing, state: db });
+  });
+
+  // REST API: Synchronize a move and clock times in an active Friend Chess Match
+  app.post('/api/network/chess-move', (req, res) => {
+    const {
+      matchId,
+      fen,
+      moveHistorySan,
+      turn,
+      whiteTimeSeconds,
+      blackTimeSeconds,
+      status,
+      winnerColor,
+      winReason,
+    } = req.body as {
+      matchId: string;
+      fen: string;
+      moveHistorySan: string[];
+      turn: 'w' | 'b';
+      whiteTimeSeconds: number | null;
+      blackTimeSeconds: number | null;
+      status?: 'active' | 'completed';
+      winnerColor?: 'w' | 'b' | 'draw' | null;
+      winReason?: string;
+    };
+
+    const existing = db.chessMatches[matchId];
+    if (!existing) {
+      res.status(404).json({ ok: false, error: 'Chess match not found' });
+      return;
+    }
+
+    existing.fen = fen;
+    existing.moveHistorySan = moveHistorySan;
+    existing.turn = turn;
+    existing.whiteTimeSeconds = whiteTimeSeconds;
+    existing.blackTimeSeconds = blackTimeSeconds;
+    if (status) {
+      existing.status = status;
+      existing.eventType =
+        status === 'completed' ? 'CHESS_FINISHED' : 'CHESS_ACTIVE';
+    }
+    if (winnerColor !== undefined) existing.winnerColor = winnerColor;
+    if (winReason !== undefined) existing.winReason = winReason;
+    existing.updatedAt = Date.now();
+
+    saveNetworkDb(db);
+    broadcastState('network:chess_updated');
+    res.json({ ok: true, match: existing, state: db });
   });
 
   const isProd = process.env.NODE_ENV === 'production';

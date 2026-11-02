@@ -19,10 +19,10 @@
       "name": "Leia",
       "age": 10,
       "ageGroup": "7-13",
-      "avatarId": "p9_cyber_blue_girl",
+      "avatarId": "p9_crimson_roses_girl",
       "xp": 545,
       "streak": 1,
-      "updatedAt": 1793575275273
+      "updatedAt": 1793587849814
     },
     "usr_valentina_11_kc6": {
       "id": "usr_valentina_11_kc6",
@@ -131,6 +131,30 @@
       "xp": 15,
       "streak": 1,
       "updatedAt": 1793579453846
+    },
+    "peer_lumi5291": {
+      "id": "peer_lumi5291",
+      "friendCode": "LUMI-5291",
+      "username": "@lumi_5291",
+      "name": "Amigo LUMI-5291",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_crimson_roses_girl",
+      "xp": 120,
+      "streak": 2,
+      "updatedAt": 1793587849815
+    },
+    "usr_valeria_10_h0k": {
+      "id": "usr_valeria_10_h0k",
+      "friendCode": "LUMI-9102",
+      "username": "@valeria",
+      "name": "Valeria",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793588701188
     }
   },
   "friendships": {
@@ -195,10 +219,10 @@
         "name": "Leia",
         "age": 10,
         "ageGroup": "7-13",
-        "avatarId": "p9_cyber_blue_girl",
+        "avatarId": "p9_crimson_roses_girl",
         "xp": 545,
         "streak": 1,
-        "updatedAt": 1793575275273
+        "updatedAt": 1793587849814
       },
       "receiverProfile": {
         "id": "peer_lumi7549",
@@ -213,7 +237,7 @@
         "updatedAt": 1793575275273
       },
       "chatMessages": [],
-      "updatedAt": 1793575275273
+      "updatedAt": 1793587849814
     },
     "fr_peer_lumi7788__usr_valentina_10_x7j": {
       "id": "fr_peer_lumi7788__usr_valentina_10_x7j",
@@ -249,7 +273,127 @@
       },
       "chatMessages": [],
       "updatedAt": 1793576430848
+    },
+    "fr_peer_lumi5291__usr_leialove_10_s3r": {
+      "id": "fr_peer_lumi5291__usr_leialove_10_s3r",
+      "requesterId": "usr_leialove_10_s3r",
+      "receiverId": "peer_lumi5291",
+      "requesterCode": "LUMI-5291",
+      "receiverCode": "LUMI-5291",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_leialove_10_s3r",
+        "friendCode": "LUMI-5291",
+        "username": "@leia_love",
+        "name": "Leia",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_crimson_roses_girl",
+        "xp": 545,
+        "streak": 1,
+        "updatedAt": 1793587849814
+      },
+      "receiverProfile": {
+        "id": "peer_lumi5291",
+        "friendCode": "LUMI-5291",
+        "username": "@lumi_5291",
+        "name": "Amigo LUMI-5291",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_crimson_roses_girl",
+        "xp": 120,
+        "streak": 2,
+        "updatedAt": 1793587849815
+      },
+      "chatMessages": [],
+      "updatedAt": 1793587854207
+    },
+    "fr_usr_mateo_10_jmq__usr_valeria_10_h0k": {
+      "id": "fr_usr_mateo_10_jmq__usr_valeria_10_h0k",
+      "requesterId": "usr_valeria_10_h0k",
+      "receiverId": "usr_mateo_10_jmq",
+      "requesterCode": "LUMI-9102",
+      "receiverCode": "LUMI-6158",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_valeria_10_h0k",
+        "friendCode": "LUMI-9102",
+        "username": "@valeria",
+        "name": "Valeria",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793588701188
+      },
+      "receiverProfile": {
+        "id": "usr_mateo_10_jmq",
+        "friendCode": "LUMI-6158",
+        "username": "@mateo",
+        "name": "Mateo",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793579230977
+      },
+      "chatMessages": [
+        {
+          "id": "msg_1793588708222_b755",
+          "senderId": "usr_valeria_10_h0k",
+          "senderName": "Valeria",
+          "text": "♟️ Te reto a una partida de Ajedrez: ⚡ 3 min (Blitz) · Juegas con Negras ♚",
+          "timestamp": "03:05",
+          "attachmentType": "chess_invite",
+          "attachmentTitle": "⚡ 3 min (Blitz) · Negras ♚"
+        },
+        {
+          "id": "msg_chess_chess_match_1793588708219",
+          "senderId": "usr_valeria_10_h0k",
+          "senderName": "Valeria",
+          "text": "♟️ Invitación de Ajedrez: ⚡ 3 min (Blitz) · Juegas con Negras ♚",
+          "timestamp": "03:05",
+          "attachmentType": "chess_invite",
+          "attachmentId": "chess_match_1793588708219",
+          "attachmentTitle": "⚡ 3 min (Blitz) · Negras",
+          "chessMatchId": "chess_match_1793588708219"
+        }
+      ],
+      "updatedAt": 1793588708246
     }
   },
-  "rooms": {}
+  "rooms": {},
+  "chessMatches": {
+    "chess_match_1793588708219": {
+      "id": "chess_match_1793588708219",
+      "eventType": "CHESS_ACTIVE",
+      "hostId": "usr_valeria_10_h0k",
+      "hostName": "Valeria",
+      "hostFriendCode": "LUMI-9102",
+      "hostAvatarId": "p9_flower_crown_boy",
+      "hostColor": "w",
+      "guestId": "usr_mateo_10_jmq",
+      "guestName": "Mateo",
+      "guestFriendCode": "LUMI-6158",
+      "guestAvatarId": "p9_flower_crown_boy",
+      "guestColor": "b",
+      "timeControlId": "3min",
+      "timeControlLabel": "⚡ 3 min (Blitz)",
+      "initialSeconds": 180,
+      "whiteTimeSeconds": 180,
+      "blackTimeSeconds": 180,
+      "colorPreference": "w",
+      "status": "active",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+      "moveHistorySan": [
+        "e4"
+      ],
+      "turn": "b",
+      "updatedAt": 1793588708627
+    }
+  }
 }

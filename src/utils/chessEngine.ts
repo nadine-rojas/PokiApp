@@ -5,6 +5,7 @@ export type BotEloLevel = '200' | '1000' | '2000';
 export interface BotEloMetadata {
   elo: BotEloLevel;
   numericElo: number;
+  depth: string;
   title: string;
   subtitle: string;
   description: string;
@@ -15,6 +16,7 @@ export const CHESS_BOT_LEVELS: BotEloMetadata[] = [
   {
     elo: '200',
     numericElo: 200,
+    depth: '1-2',
     title: 'Bot 200 ELO',
     subtitle: 'Principiante Inteligente',
     description:
@@ -24,6 +26,7 @@ export const CHESS_BOT_LEVELS: BotEloMetadata[] = [
   {
     elo: '1000',
     numericElo: 1000,
+    depth: '3',
     title: 'Bot 1000 ELO',
     subtitle: 'Intermedio Fuerte',
     description:
@@ -33,6 +36,7 @@ export const CHESS_BOT_LEVELS: BotEloMetadata[] = [
   {
     elo: '2000',
     numericElo: 2000,
+    depth: '4-5',
     title: 'Bot 2000 ELO',
     subtitle: 'Gran Maestro Táctico',
     description:
@@ -40,6 +44,187 @@ export const CHESS_BOT_LEVELS: BotEloMetadata[] = [
     badgeText: '2000 ELO · Maestro Depth 4-5 + Quiescence',
   },
 ];
+
+export type ChessTimeControlId =
+  | '3min'
+  | '5min'
+  | '10min'
+  | '15min'
+  | 'unlimited';
+
+export type ChessColorPreference = 'w' | 'b' | 'random';
+
+export interface ChessTimeControlOption {
+  id: ChessTimeControlId;
+  label: string;
+  shortLabel: string;
+  initialSeconds: number | null;
+  category: string;
+}
+
+export const CHESS_TIME_CONTROLS: ChessTimeControlOption[] = [
+  {
+    id: '3min',
+    label: '⚡ 3 min (Blitz)',
+    shortLabel: '3 min',
+    initialSeconds: 180,
+    category: 'Blitz',
+  },
+  {
+    id: '5min',
+    label: '⏱️ 5 min (Blitz)',
+    shortLabel: '5 min',
+    initialSeconds: 300,
+    category: 'Blitz',
+  },
+  {
+    id: '10min',
+    label: '🕙 10 min (Rápida)',
+    shortLabel: '10 min',
+    initialSeconds: 600,
+    category: 'Rápida',
+  },
+  {
+    id: '15min',
+    label: '⏳ 15 min (Clásica)',
+    shortLabel: '15 min',
+    initialSeconds: 900,
+    category: 'Clásica',
+  },
+  {
+    id: 'unlimited',
+    label: '∞ Sin tiempo (Amistosa)',
+    shortLabel: 'Sin tiempo',
+    initialSeconds: null,
+    category: 'Amistosa',
+  },
+];
+
+export interface ChessColorOption {
+  id: ChessColorPreference;
+  label: string;
+  icon: string;
+  description: string;
+}
+
+export const CHESS_COLOR_OPTIONS: ChessColorOption[] = [
+  {
+    id: 'w',
+    label: 'Blancas',
+    icon: '♔',
+    description: 'Mueves primero con piezas blancas',
+  },
+  {
+    id: 'b',
+    label: 'Negras',
+    icon: '♚',
+    description: 'Tu amigo mueve primero con blancas',
+  },
+  {
+    id: 'random',
+    label: 'Aleatorio',
+    icon: '🎲',
+    description: 'Color sorteado automáticamente',
+  },
+];
+
+export function getChessTimeControlById(
+  id: ChessTimeControlId
+): ChessTimeControlOption {
+  return (
+    CHESS_TIME_CONTROLS.find((tc) => tc.id === id) || CHESS_TIME_CONTROLS[1]
+  );
+}
+
+export function resolveChessInviteColors(
+  preference: ChessColorPreference,
+  seed: number = Date.now()
+): { hostColor: 'w' | 'b'; guestColor: 'w' | 'b' } {
+  if (preference === 'w') {
+    return { hostColor: 'w', guestColor: 'b' };
+  }
+  if (preference === 'b') {
+    return { hostColor: 'b', guestColor: 'w' };
+  }
+  const hostIsWhite = Math.abs(Math.floor(seed)) % 2 === 0;
+  return hostIsWhite
+    ? { hostColor: 'w', guestColor: 'b' }
+    : { hostColor: 'b', guestColor: 'w' };
+}
+
+export function formatChessClock(seconds: number | null): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
+    return '∞ Sin tiempo';
+  }
+  const clamped = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+export function tickChessClock(params: {
+  whiteTimeSeconds: number | null;
+  blackTimeSeconds: number | null;
+  activeTurn: 'w' | 'b';
+  status: 'pending_invite' | 'active' | 'completed' | 'declined';
+  elapsedSeconds?: number;
+}): {
+  whiteTimeSeconds: number | null;
+  blackTimeSeconds: number | null;
+  status: 'pending_invite' | 'active' | 'completed' | 'declined';
+  timeoutWinner: 'w' | 'b' | null;
+  winReason?: string;
+} {
+  const delta = Math.max(1, Math.floor(params.elapsedSeconds ?? 1));
+  if (
+    params.status !== 'active' ||
+    params.whiteTimeSeconds === null ||
+    params.blackTimeSeconds === null
+  ) {
+    return {
+      whiteTimeSeconds: params.whiteTimeSeconds,
+      blackTimeSeconds: params.blackTimeSeconds,
+      status: params.status,
+      timeoutWinner: null,
+    };
+  }
+
+  if (params.activeTurn === 'w') {
+    const nextWhite = Math.max(0, params.whiteTimeSeconds - delta);
+    if (nextWhite <= 0) {
+      return {
+        whiteTimeSeconds: 0,
+        blackTimeSeconds: params.blackTimeSeconds,
+        status: 'completed',
+        timeoutWinner: 'b',
+        winReason: '¡Tiempo agotado para Blancas! Ganan las Negras por tiempo.',
+      };
+    }
+    return {
+      whiteTimeSeconds: nextWhite,
+      blackTimeSeconds: params.blackTimeSeconds,
+      status: 'active',
+      timeoutWinner: null,
+    };
+  } else {
+    const nextBlack = Math.max(0, params.blackTimeSeconds - delta);
+    if (nextBlack <= 0) {
+      return {
+        whiteTimeSeconds: params.whiteTimeSeconds,
+        blackTimeSeconds: 0,
+        status: 'completed',
+        timeoutWinner: 'w',
+        winReason: '¡Tiempo agotado para Negras! Ganan las Blancas por tiempo.',
+      };
+    }
+    return {
+      whiteTimeSeconds: params.whiteTimeSeconds,
+      blackTimeSeconds: nextBlack,
+      status: 'active',
+      timeoutWinner: null,
+    };
+  }
+}
 
 export const PIECE_MATERIAL_VALUES: Record<string, number> = {
   p: 100,

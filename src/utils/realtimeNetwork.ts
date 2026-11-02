@@ -25,10 +25,43 @@ export interface NetworkChatMessage {
   senderName: string;
   text: string;
   timestamp: string;
-  attachmentType?: 'gif' | 'drawing';
+  attachmentType?: 'gif' | 'drawing' | 'chess_invite';
   attachmentId?: string;
   attachmentTitle?: string;
   attachmentUrl?: string;
+  chessMatchId?: string;
+}
+
+export interface NetworkChessMatch {
+  id: string;
+  eventType:
+    | 'CHESS_INVITE'
+    | 'CHESS_ACTIVE'
+    | 'CHESS_FINISHED'
+    | 'CHESS_DECLINED';
+  hostId: string;
+  hostName: string;
+  hostFriendCode: string;
+  hostAvatarId: string;
+  hostColor: 'w' | 'b';
+  guestId: string;
+  guestName: string;
+  guestFriendCode: string;
+  guestAvatarId: string;
+  guestColor: 'w' | 'b';
+  timeControlId: '3min' | '5min' | '10min' | '15min' | 'unlimited';
+  timeControlLabel: string;
+  initialSeconds: number | null;
+  whiteTimeSeconds: number | null;
+  blackTimeSeconds: number | null;
+  colorPreference: 'w' | 'b' | 'random';
+  status: 'pending_invite' | 'active' | 'completed' | 'declined';
+  fen: string;
+  moveHistorySan: string[];
+  turn: 'w' | 'b';
+  winnerColor?: 'w' | 'b' | 'draw' | null;
+  winReason?: string;
+  updatedAt: number;
 }
 
 export interface NetworkFriendshipRecord {
@@ -76,6 +109,7 @@ export interface GlobalNetworkState {
   profiles: Record<string, PublicPeerProfile>;
   friendships: Record<string, NetworkFriendshipRecord>;
   rooms: Record<string, NetworkMultiplayerRoom>;
+  chessMatches: Record<string, NetworkChessMatch>;
 }
 
 const LOCAL_NET_KEY = 'lumiquest_global_network_v2';
@@ -110,6 +144,7 @@ class RealtimeNetworkClient {
     profiles: {},
     friendships: {},
     rooms: {},
+    chessMatches: {},
   };
   private listeners = new Set<(state: GlobalNetworkState) => void>();
   private ws: WebSocket | null = null;
@@ -131,6 +166,7 @@ class RealtimeNetworkClient {
           profiles: parsed.profiles || {},
           friendships: parsed.friendships || {},
           rooms: parsed.rooms || {},
+          chessMatches: parsed.chessMatches || {},
         });
       }
     } catch {
@@ -225,11 +261,23 @@ class RealtimeNetworkClient {
       });
     }
 
+    if (incoming.chessMatches) {
+      Object.values(incoming.chessMatches).forEach((cm) => {
+        if (!cm || !cm.id) return;
+        const current = this.state.chessMatches[cm.id];
+        if (!current || (cm.updatedAt || 0) >= (current.updatedAt || 0)) {
+          this.state.chessMatches[cm.id] = cm;
+          changed = true;
+        }
+      });
+    }
+
     if (changed) {
       this.state = {
         profiles: { ...this.state.profiles },
         friendships: { ...this.state.friendships },
         rooms: { ...this.state.rooms },
+        chessMatches: { ...this.state.chessMatches },
       };
       this.notifyListeners();
     }
@@ -298,6 +346,7 @@ class RealtimeNetworkClient {
         client.subscribe(`${MQTT_TOPIC_PREFIX}/profiles/+`);
         client.subscribe(`${MQTT_TOPIC_PREFIX}/friendships/+`);
         client.subscribe(`${MQTT_TOPIC_PREFIX}/rooms/+`);
+        client.subscribe(`${MQTT_TOPIC_PREFIX}/chess/+`);
 
         // Republish known local profiles as retained MQTT messages
         Object.values(this.state.profiles).forEach((p) => {
@@ -319,6 +368,8 @@ class RealtimeNetworkClient {
             this.mergeState({ friendships: { [parsed.id]: parsed } });
           } else if (topic.includes('/rooms/') && parsed?.roomCode) {
             this.mergeState({ rooms: { [parsed.roomCode]: parsed } });
+          } else if (topic.includes('/chess/') && parsed?.id) {
+            this.mergeState({ chessMatches: { [parsed.id]: parsed } });
           }
         } catch {
           // Ignore malformed MQTT message
@@ -548,10 +599,11 @@ class RealtimeNetworkClient {
     senderName: string,
     text: string,
     attachment?: {
-      attachmentType: 'gif' | 'drawing';
+      attachmentType: 'gif' | 'drawing' | 'chess_invite';
       attachmentId?: string;
       attachmentTitle?: string;
       attachmentUrl?: string;
+      chessMatchId?: string;
     }
   ): Promise<void> {
     this.init();
@@ -657,6 +709,164 @@ class RealtimeNetworkClient {
       }
     } catch {
       // Handled optimistically + via MQTT
+    }
+  }
+
+  /**
+   * Envía una solicitud de partida de Ajedrez en tiempo real (CHESS_INVITE) con el temporizador
+   * y color elegidos por el jugador, sincronizada por WebSocket, MQTT y BroadcastChannel.
+   */
+  public async sendChessInvite(params: {
+    match: NetworkChessMatch;
+    friendshipId?: string;
+  }): Promise<NetworkChessMatch> {
+    this.init();
+    const matchWithTimestamp: NetworkChessMatch = {
+      ...params.match,
+      eventType: 'CHESS_INVITE',
+      updatedAt: Date.now(),
+    };
+
+    this.mergeState({
+      chessMatches: { [matchWithTimestamp.id]: matchWithTimestamp },
+    });
+    this.publishMqtt(`chess/${matchWithTimestamp.id}`, matchWithTimestamp, true);
+    this.broadcastLocal();
+
+    try {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(
+          JSON.stringify({
+            type: 'CHESS_INVITE',
+            match: matchWithTimestamp,
+          })
+        );
+      }
+      const res = await fetch('/api/network/chess-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          match: matchWithTimestamp,
+          friendshipId: params.friendshipId,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) this.mergeState(data.state);
+        if (data?.match) return data.match as NetworkChessMatch;
+      }
+    } catch {
+      // Handled optimistically + via MQTT + BroadcastChannel
+    }
+
+    return matchWithTimestamp;
+  }
+
+  public async respondChessInvite(
+    matchId: string,
+    action: 'accept' | 'decline'
+  ): Promise<NetworkChessMatch | null> {
+    this.init();
+    const existing = this.state.chessMatches[matchId];
+    if (existing) {
+      const updated: NetworkChessMatch = {
+        ...existing,
+        status: action === 'accept' ? 'active' : 'declined',
+        eventType: action === 'accept' ? 'CHESS_ACTIVE' : 'CHESS_DECLINED',
+        updatedAt: Date.now(),
+      };
+      this.mergeState({ chessMatches: { [matchId]: updated } });
+      this.publishMqtt(`chess/${matchId}`, updated, true);
+      this.broadcastLocal();
+      try {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(
+            JSON.stringify({ type: 'chess:upsert', match: updated })
+          );
+        }
+      } catch {
+        // Ignore WS error
+      }
+    }
+
+    try {
+      const res = await fetch('/api/network/chess-respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId, action }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) this.mergeState(data.state);
+        if (data?.match) return data.match as NetworkChessMatch;
+      }
+    } catch {
+      // Handled optimistically
+    }
+    return this.state.chessMatches[matchId] || null;
+  }
+
+  public async syncChessMatchMove(params: {
+    matchId: string;
+    fen: string;
+    moveHistorySan: string[];
+    turn: 'w' | 'b';
+    whiteTimeSeconds: number | null;
+    blackTimeSeconds: number | null;
+    status?: 'active' | 'completed';
+    winnerColor?: 'w' | 'b' | 'draw' | null;
+    winReason?: string;
+  }): Promise<void> {
+    this.init();
+    const existing = this.state.chessMatches[params.matchId];
+    if (existing) {
+      const updated: NetworkChessMatch = {
+        ...existing,
+        fen: params.fen,
+        moveHistorySan: params.moveHistorySan,
+        turn: params.turn,
+        whiteTimeSeconds: params.whiteTimeSeconds,
+        blackTimeSeconds: params.blackTimeSeconds,
+        status: params.status || existing.status,
+        eventType:
+          params.status === 'completed' ? 'CHESS_FINISHED' : 'CHESS_ACTIVE',
+        winnerColor:
+          params.winnerColor !== undefined
+            ? params.winnerColor
+            : existing.winnerColor,
+        winReason:
+          params.winReason !== undefined
+            ? params.winReason
+            : existing.winReason,
+        updatedAt: Date.now(),
+      };
+      this.mergeState({ chessMatches: { [params.matchId]: updated } });
+      this.publishMqtt(`chess/${params.matchId}`, updated, true);
+      this.broadcastLocal();
+
+      try {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(
+            JSON.stringify({ type: 'chess:upsert', match: updated })
+          );
+        }
+      } catch {
+        // Ignore WS error
+      }
+    }
+
+    try {
+      const res = await fetch('/api/network/chess-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) this.mergeState(data.state);
+      }
+    } catch {
+      // Handled optimistically
     }
   }
 }

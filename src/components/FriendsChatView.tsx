@@ -36,6 +36,16 @@ import {
 } from '../utils/educationLogic';
 import { AvatarBadge, MascotCompanion } from './ArtworkRenderer';
 import { GamesView } from './GamesView';
+import {
+  ChessFriendInviteModal,
+  AcceptedFriendSummary,
+} from './ChessSectionView';
+import {
+  ChessTimeControlId,
+  ChessColorPreference,
+  getChessTimeControlById,
+  resolveChessInviteColors,
+} from '../utils/chessEngine';
 import { playRewardSound } from '../utils/soundEffects';
 
 export interface ChatMessageItem {
@@ -44,10 +54,11 @@ export interface ChatMessageItem {
   senderName: string;
   text: string;
   timestamp: string;
-  attachmentType?: 'gif' | 'drawing';
+  attachmentType?: 'gif' | 'drawing' | 'chess_invite';
   attachmentId?: string;
   attachmentUrl?: string;
   attachmentTitle?: string;
+  chessMatchId?: string;
 }
 
 export interface FriendshipRecord {
@@ -86,12 +97,19 @@ interface FriendsChatViewProps {
     friendshipId: string,
     text: string,
     attachment?: {
-      attachmentType: 'gif' | 'drawing';
+      attachmentType: 'gif' | 'drawing' | 'chess_invite';
       attachmentId?: string;
       attachmentTitle?: string;
       attachmentUrl?: string;
+      chessMatchId?: string;
     }
   ) => void;
+  onSendChessChallenge?: (params: {
+    friend: AcceptedFriendSummary;
+    timeControlId: ChessTimeControlId;
+    colorPreference: ChessColorPreference;
+  }) => void;
+  onOpenChessMatchById?: (matchId?: string) => void;
   onEarnGameXp: (xpAmount: number, gemsEarned?: number) => void;
   onOpenParentalPanel: () => void;
 }
@@ -107,6 +125,8 @@ export function FriendsChatView({
   onRejectFriend,
   onBlockOrReportFriend,
   onSendMessage,
+  onSendChessChallenge,
+  onOpenChessMatchById,
   onEarnGameXp,
   onOpenParentalPanel,
 }: FriendsChatViewProps) {
@@ -149,6 +169,11 @@ export function FriendsChatView({
     reason: string;
   } | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
+
+  // Modal de Configuración de Partida de Ajedrez desde el Chat ("♟️ Retar a Ajedrez")
+  const [chessInviteModalOpen, setChessInviteModalOpen] = useState(false);
+  const [chessInviteTargetFriendId, setChessInviteTargetFriendId] =
+    useState<string>('');
 
   // Estados para el selector de GIFs seguros y el Escáner de Imágenes Anti-Fotos de Niños
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -1006,6 +1031,20 @@ export function FriendsChatView({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
+                          data-testid="chat-challenge-chess-btn"
+                          onClick={() => {
+                            playRewardSound('pop');
+                            setChessInviteTargetFriendId(
+                              activeFriendship.peerProfile.id
+                            );
+                            setChessInviteModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <span>♟️ Retar a Ajedrez</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setRightPanelMode('games')}
                           className="px-3 py-1.5 rounded-full bg-[#4B44D6] text-white font-extrabold text-xs flex items-center gap-1 cursor-pointer"
                         >
@@ -1078,9 +1117,9 @@ export function FriendsChatView({
                       <div className="max-w-[82%] rounded-[24px] rounded-tl-md bg-white text-slate-900 px-4 py-3 text-xs font-bold shadow-sm space-y-2">
                         <div>
                           ¡Hola {currentUser.name}! Aquí puedes chatear con{' '}
-                          <strong>{activeFriendship.peerProfile.name}</strong>, enviar GIFs animados y compartir dibujos de tus cursos.
+                          <strong>{activeFriendship.peerProfile.name}</strong>, enviar GIFs animados, retarle a Ajedrez con reloj y compartir dibujos de tus cursos.
                         </div>
-                        <div className="p-3 rounded-2xl bg-[#F5EFFF] border border-[#DDD6FE] flex items-center justify-between gap-3">
+                        <div className="p-3 rounded-2xl bg-[#F5EFFF] border border-[#DDD6FE] flex flex-wrap items-center justify-between gap-2">
                           <div>
                             <div className="font-black text-[#4B44D6] text-xs">
                               ¿Jugamos una partida o compartimos un dibujo?
@@ -1089,13 +1128,28 @@ export function FriendsChatView({
                               Recuerda: Nunca compartas fotos reales ni tu dirección.
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setGifPickerOpen(true)}
-                            className="px-3 py-1.5 rounded-full bg-[#4B44D6] text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
-                          >
-                            Enviar GIF
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playRewardSound('pop');
+                                setChessInviteTargetFriendId(
+                                  activeFriendship.peerProfile.id
+                                );
+                                setChessInviteModalOpen(true);
+                              }}
+                              className="px-3 py-1.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
+                            >
+                              ♟️ Retar a Ajedrez
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGifPickerOpen(true)}
+                              className="px-3 py-1.5 rounded-full bg-[#4B44D6] text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
+                            >
+                              Enviar GIF
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1166,6 +1220,35 @@ export function FriendsChatView({
                                       {msg.attachmentTitle || 'Boceto del curso'}
                                     </div>
                                   </div>
+                                </div>
+                              )}
+
+                              {msg.attachmentType === 'chess_invite' && (
+                                <div
+                                  data-testid="chat-chess-invite-card"
+                                  className="p-3.5 rounded-2xl bg-emerald-950 text-white border-2 border-emerald-400 space-y-2.5 shadow-sm"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                                      ♟️ Reto de Ajedrez en Tiempo Real
+                                    </span>
+                                  </div>
+                                  <div className="text-xs font-bold text-white/95">
+                                    {msg.attachmentTitle || msg.text}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    data-testid="chat-accept-chess-invite-btn"
+                                    onClick={() => {
+                                      playRewardSound('fanfare');
+                                      onOpenChessMatchById?.(
+                                        msg.chessMatchId || msg.attachmentId
+                                      );
+                                    }}
+                                    className="w-full py-2 px-3 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <span>Aceptar / Abrir Tablero en Vivo ♟️</span>
+                                  </button>
                                 </div>
                               )}
 
@@ -1429,6 +1512,47 @@ export function FriendsChatView({
           )}
         </div>
       </div>
+
+      {/* MODAL DE CONFIGURACIÓN DE PARTIDA DE AJEDREZ DESDE EL CHAT ("♟️ Retar a Ajedrez") */}
+      <ChessFriendInviteModal
+        isOpen={chessInviteModalOpen}
+        onClose={() => setChessInviteModalOpen(false)}
+        acceptedFriends={acceptedFriends.map((f) => ({
+          id: f.peerProfile.id,
+          friendCode: f.peerProfile.friendCode,
+          username: f.peerProfile.username,
+          name: f.peerProfile.name,
+          avatarId: f.peerProfile.avatarId,
+          friendshipId: f.id,
+        }))}
+        initialFriendId={
+          chessInviteTargetFriendId || activeFriendship?.peerProfile.id
+        }
+        onSendInvite={(params) => {
+          setChessInviteModalOpen(false);
+          const tcOption = getChessTimeControlById(params.timeControlId);
+          const colors = resolveChessInviteColors(params.colorPreference);
+          const targetFriendship =
+            acceptedFriends.find(
+              (f) => f.peerProfile.id === params.friend.id
+            ) || activeFriendship;
+          if (targetFriendship) {
+            onSendMessage(
+              targetFriendship.id,
+              `♟️ Te reto a una partida de Ajedrez: ${tcOption.label} · Juegas con ${
+                colors.guestColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+              }`,
+              {
+                attachmentType: 'chess_invite',
+                attachmentTitle: `${tcOption.label} · ${
+                  colors.guestColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+                }`,
+              }
+            );
+          }
+          onSendChessChallenge?.(params);
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Chess, Square } from 'chess.js';
 import {
   Trophy,
@@ -15,6 +15,10 @@ import {
   ShoppingBag,
   Gem,
   Move as MoveIcon,
+  Clock,
+  Send,
+  X,
+  Check,
 } from 'lucide-react';
 import {
   AgeGroup,
@@ -33,17 +37,299 @@ import {
 import {
   BotEloLevel,
   CHESS_BOT_LEVELS,
+  ChessTimeControlId,
+  ChessColorPreference,
+  CHESS_TIME_CONTROLS,
+  CHESS_COLOR_OPTIONS,
+  getChessTimeControlById,
+  resolveChessInviteColors,
+  formatChessClock,
+  tickChessClock,
   computeRealChessBotMove,
 } from '../utils/chessEngine';
+import { NetworkChessMatch, realtimeNetwork } from '../utils/realtimeNetwork';
 import { playRewardSound, speakSpanishText } from '../utils/soundEffects';
 
 export type { BotEloLevel };
 
-interface AcceptedFriendSummary {
+export interface AcceptedFriendSummary {
   id: string;
+  friendCode?: string;
   username: string;
   name: string;
   avatarId: string;
+  friendshipId?: string;
+}
+
+export interface ChessFriendInviteModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  acceptedFriends: AcceptedFriendSummary[];
+  initialFriendId?: string;
+  onSendInvite: (params: {
+    friend: AcceptedFriendSummary;
+    timeControlId: ChessTimeControlId;
+    colorPreference: ChessColorPreference;
+  }) => void;
+  onGoToFriendsTab?: () => void;
+}
+
+/**
+ * Modal / Ventana clara de Configuración de Partida de Ajedrez con Amigo:
+ * 1. Seleccionar Amigo (de su lista de amigos aceptados)
+ * 2. Selector de Temporizador (⚡ 3 min, ⏱️ 5 min, 🕙 10 min, ⏳ 15 min, ∞ Sin tiempo)
+ * 3. Elegir Color (Blancas, Negras o Aleatorio)
+ * 4. Botón grande: "Enviar Solicitud de Partida ♟️"
+ */
+export function ChessFriendInviteModal({
+  isOpen,
+  onClose,
+  acceptedFriends,
+  initialFriendId,
+  onSendInvite,
+  onGoToFriendsTab,
+}: ChessFriendInviteModalProps) {
+  const [selectedFriendId, setSelectedFriendId] = useState<string>(
+    initialFriendId || acceptedFriends[0]?.id || ''
+  );
+  const [selectedTimeControl, setSelectedTimeControl] =
+    useState<ChessTimeControlId>('5min');
+  const [selectedColorPref, setSelectedColorPref] =
+    useState<ChessColorPreference>('w');
+
+  useEffect(() => {
+    if (initialFriendId) {
+      setSelectedFriendId(initialFriendId);
+    } else if (
+      acceptedFriends.length > 0 &&
+      !acceptedFriends.some((f) => f.id === selectedFriendId)
+    ) {
+      setSelectedFriendId(acceptedFriends[0].id);
+    }
+  }, [initialFriendId, acceptedFriends, selectedFriendId]);
+
+  if (!isOpen) return null;
+
+  const chosenFriend =
+    acceptedFriends.find((f) => f.id === selectedFriendId) ||
+    acceptedFriends[0];
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chosenFriend) return;
+    playRewardSound('fanfare');
+    onSendInvite({
+      friend: chosenFriend,
+      timeControlId: selectedTimeControl,
+      colorPreference: selectedColorPref,
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Configurar Partida de Ajedrez con Amigo"
+      data-testid="chess-friend-invite-modal"
+    >
+      <div className="bg-white dark:bg-[#181326] text-slate-900 dark:text-white rounded-[36px] max-w-xl w-full p-6 sm:p-8 border-4 border-emerald-500 shadow-2xl space-y-6 my-auto">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-[#BEF264] text-xs font-black">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Invitación en Tiempo Real (WebSocket / MQTT)</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black font-display">
+              ♟️ Configurar Partida con un Amigo
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+              Elige a tu amigo, el reloj de ajedrez y tu color para enviar la solicitud en vivo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar ventana de configuración de partida"
+            className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {acceptedFriends.length === 0 ? (
+          <div className="p-6 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 text-center space-y-4">
+            <Lock className="w-10 h-10 text-amber-500 mx-auto" />
+            <div className="space-y-1">
+              <h3 className="font-black text-base">
+                Aún no tienes amigos aceptados en tu lista
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
+                Primero conecta con un amigo usando su Código de Amigo (LUMI-XXXX) o su nombre en la pestaña Amigos para poder enviarle un reto de Ajedrez.
+              </p>
+            </div>
+            {onGoToFriendsTab && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onGoToFriendsTab();
+                }}
+                className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs cursor-pointer"
+              >
+                Ir a Amigos para Conectar Compañero
+              </button>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* 1. SELECCIONAR AMIGO */}
+            <div className="space-y-2">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                1. Seleccionar Amigo ({acceptedFriends.length})
+              </label>
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-36 overflow-y-auto pr-1"
+                data-testid="chess-invite-friend-list"
+              >
+                {acceptedFriends.map((fr) => {
+                  const isSelected = chosenFriend?.id === fr.id;
+                  return (
+                    <button
+                      key={fr.id}
+                      type="button"
+                      data-testid={`select-chess-friend-${fr.id}`}
+                      onClick={() => {
+                        playRewardSound('pop');
+                        setSelectedFriendId(fr.id);
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-500/15 font-black shadow-2xs'
+                          : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-extrabold truncate">
+                          {fr.name}
+                        </div>
+                        <div className="text-[11px] opacity-75 font-mono truncate">
+                          {fr.friendCode || fr.username}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. SELECTOR DE TEMPORIZADOR (RELOJ DE AJEDREZ) */}
+            <div className="space-y-2">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                2. Selector de Temporizador (Reloj de Ajedrez)
+              </label>
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
+                data-testid="chess-timer-selector"
+              >
+                {CHESS_TIME_CONTROLS.map((tc) => {
+                  const active = selectedTimeControl === tc.id;
+                  return (
+                    <button
+                      key={tc.id}
+                      type="button"
+                      data-testid={`chess-timer-${tc.id}`}
+                      onClick={() => {
+                        playRewardSound('pop');
+                        setSelectedTimeControl(tc.id);
+                      }}
+                      className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                        tc.id === 'unlimited' ? 'sm:col-span-2' : ''
+                      } ${
+                        active
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-950 dark:text-white shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:border-emerald-400'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-sm font-black">{tc.label}</div>
+                        <div className="text-[11px] opacity-75">
+                          {tc.initialSeconds
+                            ? `Reloj: ${formatChessClock(tc.initialSeconds)} por jugador`
+                            : 'Partida amistosa sin límite de reloj'}
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-mono font-black ${
+                          active
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        {tc.shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. ELEGIR COLOR */}
+            <div className="space-y-2">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                3. Elegir Color de tus Piezas
+              </label>
+              <div
+                className="grid grid-cols-3 gap-2.5"
+                data-testid="chess-color-selector"
+              >
+                {CHESS_COLOR_OPTIONS.map((col) => {
+                  const active = selectedColorPref === col.id;
+                  return (
+                    <button
+                      key={col.id}
+                      type="button"
+                      data-testid={`chess-color-${col.id}`}
+                      onClick={() => {
+                        playRewardSound('pop');
+                        setSelectedColorPref(col.id);
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                        active
+                          ? 'border-emerald-500 bg-emerald-500/15 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:border-emerald-400'
+                      }`}
+                    >
+                      <span className="text-2xl leading-none">{col.icon}</span>
+                      <span className="text-xs sm:text-sm font-black">
+                        {col.label}
+                      </span>
+                      <span className="text-[10px] opacity-75 leading-tight">
+                        {col.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 4. BOTÓN GRANDE: ENVIAR SOLICITUD DE PARTIDA */}
+            <button
+              type="submit"
+              data-testid="send-chess-invite-btn"
+              className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <Send className="w-5 h-5" />
+              <span>Enviar Solicitud de Partida ♟️</span>
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export interface InteractiveChessboardProps {
@@ -248,10 +534,21 @@ export function InteractiveChessboard({
 }
 
 interface ChessSectionViewProps {
+  currentUserId?: string;
+  currentUserName?: string;
+  currentUserFriendCode?: string;
+  currentUserAvatarId?: string;
   ageGroup: AgeGroup;
   chessXp: number;
   completedChessLessonIds: string[];
   acceptedFriends: AcceptedFriendSummary[];
+  activeNetworkMatch?: NetworkChessMatch | null;
+  onSendFriendChessInvite?: (params: {
+    friend: AcceptedFriendSummary;
+    timeControlId: ChessTimeControlId;
+    colorPreference: ChessColorPreference;
+  }) => void;
+  onOpenFriendsTab?: () => void;
   selectedBoardId: string;
   selectedPiecesId: string;
   selectedCoachId: string;
@@ -266,10 +563,17 @@ interface ChessSectionViewProps {
 }
 
 export function ChessSectionView({
+  currentUserId = 'local_user',
+  currentUserName = 'Jugador',
+  currentUserFriendCode = 'LUMI-1000',
+  currentUserAvatarId = 'avatar_1',
   ageGroup,
   chessXp,
   completedChessLessonIds,
   acceptedFriends,
+  activeNetworkMatch = null,
+  onSendFriendChessInvite,
+  onOpenFriendsTab,
   selectedBoardId,
   selectedPiecesId,
   selectedCoachId,
@@ -278,11 +582,40 @@ export function ChessSectionView({
   onOpenShop,
   onEarnChessXp,
 }: ChessSectionViewProps) {
-  const [mode, setMode] = useState<'bot' | 'friend' | 'lessons'>('bot');
+  const [mode, setMode] = useState<'bot' | 'friend' | 'lessons'>(
+    activeNetworkMatch ? 'friend' : 'bot'
+  );
   const [botElo, setBotElo] = useState<BotEloLevel>('1000');
   const [selectedFriendId, setSelectedFriendId] = useState<string>(
     acceptedFriends[0]?.id || ''
   );
+
+  // Modal de Configuración de Partida con Amigo (Temporizador + Color + Amigo)
+  const [inviteModalOpen, setInviteModalOpen] = useState<boolean>(false);
+  const [matchTimeControlId, setMatchTimeControlId] =
+    useState<ChessTimeControlId>(
+      activeNetworkMatch?.timeControlId || '5min'
+    );
+  const [playerAssignedColor, setPlayerAssignedColor] = useState<'w' | 'b'>(
+    'w'
+  );
+  const [whiteClockSeconds, setWhiteClockSeconds] = useState<number | null>(
+    activeNetworkMatch
+      ? activeNetworkMatch.whiteTimeSeconds
+      : getChessTimeControlById('5min').initialSeconds
+  );
+  const [blackClockSeconds, setBlackClockSeconds] = useState<number | null>(
+    activeNetworkMatch
+      ? activeNetworkMatch.blackTimeSeconds
+      : getChessTimeControlById('5min').initialSeconds
+  );
+  const [clockRunning, setClockRunning] = useState<boolean>(false);
+  const [localMatchId, setLocalMatchId] = useState<string | null>(
+    activeNetworkMatch?.id || null
+  );
+  const [inviteSentNotification, setInviteSentNotification] = useState<
+    string | null
+  >(null);
 
   // Equipamiento activo desde la Tienda
   const activeBoardTheme =
@@ -309,6 +642,119 @@ export function ChessSectionView({
     'Tu turno con Blancas. Arrastra una pieza o haz clic para ver sus movimientos legales.'
   );
 
+  // Sincronización en tiempo real cuando llega o se actualiza una partida en red con un amigo
+  useEffect(() => {
+    if (!activeNetworkMatch) return;
+    setMode('friend');
+    setLocalMatchId(activeNetworkMatch.id);
+    setMatchTimeControlId(activeNetworkMatch.timeControlId);
+    setWhiteClockSeconds(activeNetworkMatch.whiteTimeSeconds);
+    setBlackClockSeconds(activeNetworkMatch.blackTimeSeconds);
+
+    const amIHost =
+      activeNetworkMatch.hostId === currentUserId ||
+      activeNetworkMatch.hostFriendCode === currentUserFriendCode;
+    const myColor = amIHost
+      ? activeNetworkMatch.hostColor
+      : activeNetworkMatch.guestColor;
+    setPlayerAssignedColor(myColor);
+
+    if (activeNetworkMatch.fen && activeNetworkMatch.fen !== gameRef.current.fen()) {
+      try {
+        gameRef.current = new Chess(activeNetworkMatch.fen);
+        setFen(activeNetworkMatch.fen);
+        setMoveHistorySan(activeNetworkMatch.moveHistorySan || []);
+        setSelectedSquare(null);
+        setLegalTargetSquares([]);
+      } catch {
+        // Ignore invalid FEN
+      }
+    }
+
+    if (activeNetworkMatch.status === 'pending_invite') {
+      setClockRunning(false);
+      setStatusBanner(
+        `Invitación enviada a ${activeNetworkMatch.guestName} (${activeNetworkMatch.timeControlLabel} · Juegas con ${
+          myColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+        }). Esperando aceptación o realiza tu primera jugada.`
+      );
+    } else if (activeNetworkMatch.status === 'active') {
+      setClockRunning(activeNetworkMatch.initialSeconds !== null);
+      const isMyTurn = activeNetworkMatch.turn === myColor;
+      setStatusBanner(
+        isMyTurn
+          ? `¡Tu turno (${myColor === 'w' ? 'Blancas ♔' : 'Negras ♚'})! Reloj activo (${activeNetworkMatch.timeControlLabel}).`
+          : `Turno de tu amigo (${activeNetworkMatch.turn === 'w' ? 'Blancas ♔' : 'Negras ♚'}). Reloj en marcha.`
+      );
+    } else if (activeNetworkMatch.status === 'completed') {
+      setClockRunning(false);
+      if (activeNetworkMatch.winReason) {
+        setStatusBanner(activeNetworkMatch.winReason);
+      }
+    }
+  }, [
+    activeNetworkMatch?.id,
+    activeNetworkMatch?.fen,
+    activeNetworkMatch?.status,
+    activeNetworkMatch?.whiteTimeSeconds,
+    activeNetworkMatch?.blackTimeSeconds,
+    activeNetworkMatch?.updatedAt,
+    currentUserId,
+    currentUserFriendCode,
+  ]);
+
+  // Reloj de Ajedrez en Vivo (cuenta regresiva segundo a segundo para el turno activo)
+  useEffect(() => {
+    if (!clockRunning || (mode !== 'friend' && mode !== 'bot')) return;
+    if (whiteClockSeconds === null || blackClockSeconds === null) return;
+    if (gameRef.current.isGameOver()) return;
+
+    const timer = window.setInterval(() => {
+      const currentTurn = gameRef.current.turn();
+      const tickResult = tickChessClock({
+        whiteTimeSeconds: whiteClockSeconds,
+        blackTimeSeconds: blackClockSeconds,
+        activeTurn: currentTurn,
+        status: 'active',
+        elapsedSeconds: 1,
+      });
+
+      setWhiteClockSeconds(tickResult.whiteTimeSeconds);
+      setBlackClockSeconds(tickResult.blackTimeSeconds);
+
+      if (tickResult.status === 'completed' && tickResult.timeoutWinner) {
+        setClockRunning(false);
+        playRewardSound('fanfare');
+        const reason =
+          tickResult.winReason ||
+          '¡Tiempo agotado en el reloj de ajedrez!';
+        setStatusBanner(reason);
+        if (localMatchId) {
+          realtimeNetwork.syncChessMatchMove({
+            matchId: localMatchId,
+            fen: gameRef.current.fen(),
+            moveHistorySan: moveHistorySan,
+            turn: currentTurn,
+            whiteTimeSeconds: tickResult.whiteTimeSeconds,
+            blackTimeSeconds: tickResult.blackTimeSeconds,
+            status: 'completed',
+            winnerColor: tickResult.timeoutWinner,
+            winReason: reason,
+          });
+        }
+      }
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [
+    clockRunning,
+    mode,
+    whiteClockSeconds,
+    blackClockSeconds,
+    localMatchId,
+    moveHistorySan,
+  ]);
+
   // Estado para Lecciones Interactivas de Ajedrez (4 lecciones pedagógicas con chess.js)
   const [activeLesson, setActiveLesson] = useState<ChessLessonInteractive | null>(
     CHESS_ACADEMY_LESSONS[0] || null
@@ -331,21 +777,100 @@ export function ChessSectionView({
   const activeBotConfig =
     CHESS_BOT_LEVELS.find((b) => b.elo === botElo) || CHESS_BOT_LEVELS[1];
 
-  const resetMatch = (newMode?: 'bot' | 'friend', nextElo?: BotEloLevel) => {
+  const resetMatch = (
+    newMode?: 'bot' | 'friend',
+    nextElo?: BotEloLevel,
+    nextTimeControlId?: ChessTimeControlId
+  ) => {
     const targetMode = newMode || mode;
     const targetElo = nextElo || botElo;
+    const tcOption = getChessTimeControlById(
+      nextTimeControlId || matchTimeControlId
+    );
     playRewardSound('pop');
     gameRef.current = new Chess();
     setFen(gameRef.current.fen());
     setSelectedSquare(null);
     setLegalTargetSquares([]);
     setMoveHistorySan([]);
+    setWhiteClockSeconds(tcOption.initialSeconds);
+    setBlackClockSeconds(tcOption.initialSeconds);
+    setClockRunning(false);
     setCoachDialogue(activeCoach.greetingQuote);
     setStatusBanner(
       targetMode === 'bot'
-        ? `Partida iniciada contra Bot ${targetElo} ELO. Mueven las Blancas (arrastra o haz clic).`
-        : 'Partida en tiempo real con tu amigo iniciada. Mueven las Blancas.'
+        ? `Partida iniciada contra Bot ${targetElo} ELO (${tcOption.shortLabel}). Mueven las Blancas.`
+        : `Partida en tiempo real con tu amigo (${tcOption.label}). Mueven las Blancas.`
     );
+  };
+
+  const handleCreateAndSendFriendInvite = (params: {
+    friend: AcceptedFriendSummary;
+    timeControlId: ChessTimeControlId;
+    colorPreference: ChessColorPreference;
+  }) => {
+    const tcOption = getChessTimeControlById(params.timeControlId);
+    const colors = resolveChessInviteColors(params.colorPreference);
+    const freshGame = new Chess();
+    const matchId = `chess_match_${Date.now()}`;
+
+    const newMatch: NetworkChessMatch = {
+      id: matchId,
+      eventType: 'CHESS_INVITE',
+      hostId: currentUserId,
+      hostName: currentUserName,
+      hostFriendCode: currentUserFriendCode,
+      hostAvatarId: currentUserAvatarId,
+      hostColor: colors.hostColor,
+      guestId: params.friend.id,
+      guestName: params.friend.name,
+      guestFriendCode: params.friend.friendCode || params.friend.username,
+      guestAvatarId: params.friend.avatarId,
+      guestColor: colors.guestColor,
+      timeControlId: params.timeControlId,
+      timeControlLabel: tcOption.label,
+      initialSeconds: tcOption.initialSeconds,
+      whiteTimeSeconds: tcOption.initialSeconds,
+      blackTimeSeconds: tcOption.initialSeconds,
+      colorPreference: params.colorPreference,
+      status: 'pending_invite',
+      fen: freshGame.fen(),
+      moveHistorySan: [],
+      turn: 'w',
+      updatedAt: Date.now(),
+    };
+
+    setSelectedFriendId(params.friend.id);
+    setMatchTimeControlId(params.timeControlId);
+    setPlayerAssignedColor(colors.hostColor);
+    setWhiteClockSeconds(tcOption.initialSeconds);
+    setBlackClockSeconds(tcOption.initialSeconds);
+    setClockRunning(tcOption.initialSeconds !== null);
+    setLocalMatchId(matchId);
+    setMode('friend');
+    gameRef.current = freshGame;
+    setFen(freshGame.fen());
+    setMoveHistorySan([]);
+    setInviteModalOpen(false);
+    setInviteSentNotification(
+      `¡Solicitud de partida enviada en tiempo real a ${params.friend.name}! (${tcOption.label} · Juegas con ${
+        colors.hostColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+      })`
+    );
+    setStatusBanner(
+      `Reto enviado a ${params.friend.name} con reloj ${tcOption.label}. Juegas con ${
+        colors.hostColor === 'w' ? 'Blancas ♔' : 'Negras ♚'
+      }.`
+    );
+
+    realtimeNetwork.sendChessInvite({
+      match: newMatch,
+      friendshipId: params.friend.friendshipId,
+    });
+
+    if (onSendFriendChessInvite) {
+      onSendFriendChessInvite(params);
+    }
   };
 
   const handleAskCoachHint = () => {
@@ -367,6 +892,7 @@ export function ChessSectionView({
 
   const handleAwardQuickWin = () => {
     playRewardSound('fanfare');
+    setClockRunning(false);
     setCoachDialogue(activeCoach.victoryQuote);
     setStatusBanner(
       '¡Victoria táctica registrada! Ganaste +50 XP de Ajedrez y +8 gemas para la Tienda.'
@@ -389,22 +915,59 @@ export function ChessSectionView({
       if (!move) return false;
 
       playRewardSound('pop');
-      setFen(game.fen());
-      setMoveHistorySan([...game.history()]);
+      const nextFen = game.fen();
+      const nextHistory = [...game.history()];
+      setFen(nextFen);
+      setMoveHistorySan(nextHistory);
       setSelectedSquare(null);
       setLegalTargetSquares([]);
 
+      if (whiteClockSeconds !== null && blackClockSeconds !== null) {
+        setClockRunning(true);
+      }
+
       if (game.isCheckmate()) {
         playRewardSound('fanfare');
+        setClockRunning(false);
         const winner = game.turn() === 'w' ? 'Negras' : 'Blancas';
+        const winText = `¡Jaque Mate! Ganan las ${winner}. (+50 XP y +8 Gemas)`;
         setCoachDialogue(activeCoach.victoryQuote);
-        setStatusBanner(`¡Jaque Mate! Ganan las ${winner}. (+50 XP y +8 Gemas)`);
+        setStatusBanner(winText);
         onEarnChessXp(50, undefined, 8);
+
+        if (mode === 'friend' && localMatchId) {
+          realtimeNetwork.syncChessMatchMove({
+            matchId: localMatchId,
+            fen: nextFen,
+            moveHistorySan: nextHistory,
+            turn: game.turn(),
+            whiteTimeSeconds: whiteClockSeconds,
+            blackTimeSeconds: blackClockSeconds,
+            status: 'completed',
+            winnerColor: game.turn() === 'w' ? 'b' : 'w',
+            winReason: winText,
+          });
+        }
         return true;
       }
       if (game.isDraw()) {
-        setStatusBanner('Partida finalizada en Tablas. (+20 XP y +5 Gemas)');
+        setClockRunning(false);
+        const drawText = 'Partida finalizada en Tablas. (+20 XP y +5 Gemas)';
+        setStatusBanner(drawText);
         onEarnChessXp(20, undefined, 5);
+        if (mode === 'friend' && localMatchId) {
+          realtimeNetwork.syncChessMatchMove({
+            matchId: localMatchId,
+            fen: nextFen,
+            moveHistorySan: nextHistory,
+            turn: game.turn(),
+            whiteTimeSeconds: whiteClockSeconds,
+            blackTimeSeconds: blackClockSeconds,
+            status: 'completed',
+            winnerColor: 'draw',
+            winReason: drawText,
+          });
+        }
         return true;
       }
 
@@ -426,6 +989,7 @@ export function ChessSectionView({
             setMoveHistorySan([...game.history()]);
             if (game.isCheckmate()) {
               playRewardSound('wrong');
+              setClockRunning(false);
               setCoachDialogue(activeCoach.mistakeQuote);
               setStatusBanner(
                 `¡Jaque Mate del ${activeBotConfig.title} (${botMove.san})! Pulsa Nueva Partida para la revancha.`
@@ -447,12 +1011,24 @@ export function ChessSectionView({
         }, 260);
       } else {
         const turnLabel =
-          game.turn() === 'w' ? 'Blancas (Tú)' : 'Negras (Tu Amigo)';
+          game.turn() === 'w' ? 'Blancas ♔' : 'Negras ♚';
         setStatusBanner(
           game.inCheck()
-            ? `¡Jaque! Turno de ${turnLabel}.`
-            : `Jugada ${move.san} registrada. Turno de ${turnLabel}.`
+            ? `¡Jaque! Turno de ${turnLabel} (Sincronizado en tiempo real).`
+            : `Jugada ${move.san} enviada en vivo. Turno de ${turnLabel}.`
         );
+
+        if (localMatchId) {
+          realtimeNetwork.syncChessMatchMove({
+            matchId: localMatchId,
+            fen: nextFen,
+            moveHistorySan: nextHistory,
+            turn: game.turn(),
+            whiteTimeSeconds: whiteClockSeconds,
+            blackTimeSeconds: blackClockSeconds,
+            status: 'active',
+          });
+        }
       }
       return true;
     } catch {
@@ -750,9 +1326,9 @@ export function ChessSectionView({
             data-testid="chess-mode-friend"
             onClick={() => {
               setMode('friend');
-              resetMatch('friend');
+              setInviteModalOpen(true);
             }}
-            className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 ${
+            className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 cursor-pointer ${
               mode === 'friend'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                 : isTeenDark
@@ -764,7 +1340,7 @@ export function ChessSectionView({
             <div>
               <div className="font-bold text-sm">Jugar con un Amigo</div>
               <div className="text-xs opacity-80">
-                Solo amigos aceptados de tu etapa ({acceptedFriends.length})
+                Configurar Reloj (3, 5, 10, 15 min) y Enviar Solicitud ({acceptedFriends.length})
               </div>
             </div>
           </button>
@@ -779,7 +1355,7 @@ export function ChessSectionView({
                 openChessLesson(CHESS_ACADEMY_LESSONS[0]);
               }
             }}
-            className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 ${
+            className={`p-4 rounded-2xl border text-left transition-all flex items-center gap-3.5 cursor-pointer ${
               mode === 'lessons'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                 : isTeenDark
@@ -798,6 +1374,38 @@ export function ChessSectionView({
         </div>
       </section>
 
+      {/* MODAL DE CONFIGURACIÓN DE PARTIDA CON AMIGO (AMIGO + TEMPORIZADOR + COLOR + ENVIAR SOLICITUD) */}
+      <ChessFriendInviteModal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        acceptedFriends={acceptedFriends}
+        initialFriendId={selectedFriendId}
+        onSendInvite={handleCreateAndSendFriendInvite}
+        onGoToFriendsTab={onOpenFriendsTab}
+      />
+
+      {/* NOTIFICACIÓN DE INVITACIÓN ENVIADA EN TIEMPO REAL */}
+      {inviteSentNotification && (
+        <div
+          data-testid="chess-invite-sent-banner"
+          className="p-4 rounded-3xl bg-emerald-600 text-white border-2 border-emerald-300 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3">
+            <Clock className="w-6 h-6 text-amber-300 shrink-0" />
+            <div className="text-xs sm:text-sm font-black">
+              {inviteSentNotification}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInviteSentNotification(null)}
+            className="px-3.5 py-1.5 rounded-full bg-white text-emerald-800 font-black text-xs shrink-0 cursor-pointer"
+          >
+            OK
+          </button>
+        </div>
+      )}
+
       {/* VISTA 1 y 2: TABLERO CONTRA EL BOT (200 / 1000 / 2000 ELO) O CON UN AMIGO */}
       {(mode === 'bot' || mode === 'friend') && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -809,17 +1417,80 @@ export function ChessSectionView({
             }`}
           >
             {mode === 'friend' && acceptedFriends.length === 0 ? (
-              <div className="text-center py-12 space-y-3">
+              <div className="text-center py-12 space-y-4">
                 <Lock className="w-10 h-10 text-amber-500 mx-auto" />
                 <h2 className="text-xl font-bold font-display">
                   Aún no tienes amigos aceptados para jugar
                 </h2>
                 <p className="text-sm opacity-75 max-w-md mx-auto">
-                  Solo los amigos de tu misma etapa que hayan aceptado tu solicitud de amistad pueden jugar contigo en tiempo real. Ve a la pestaña Amigos para agregar un compañero o juega contra los Bots de 200, 1000 y 2000 ELO.
+                  Solo los amigos de tu misma etapa que hayan aceptado tu solicitud de amistad pueden jugar contigo en tiempo real. Ve a la pestaña Amigos para conectar un compañero por Código de Amigo (LUMI-XXXX) o juega contra los Bots de 200, 1000 y 2000 ELO.
                 </p>
+                {onOpenFriendsTab && (
+                  <button
+                    type="button"
+                    onClick={onOpenFriendsTab}
+                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs cursor-pointer"
+                  >
+                    Ir a Amigos para Conectar Compañero
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-5">
+                {/* RELOJ DE AJEDREZ DUAL EN VIVO (VISIBLE Y SINCRONIZADO) */}
+                <div
+                  data-testid="chess-clock-panel"
+                  className={`p-3.5 rounded-2xl border-2 flex flex-wrap items-center justify-between gap-3 ${
+                    isTeenDark
+                      ? 'bg-slate-950 border-slate-800'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      data-testid="chess-clock-white"
+                      className={`px-3.5 py-2 rounded-xl font-mono font-black text-sm sm:text-base flex items-center gap-2 border ${
+                        gameRef.current.turn() === 'w'
+                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      <span>♔ Blancas:</span>
+                      <span>{formatChessClock(whiteClockSeconds)}</span>
+                    </div>
+
+                    <div
+                      data-testid="chess-clock-black"
+                      className={`px-3.5 py-2 rounded-xl font-mono font-black text-sm sm:text-base flex items-center gap-2 border ${
+                        gameRef.current.turn() === 'b'
+                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-xs'
+                          : 'bg-slate-900 text-white border-slate-700'
+                      }`}
+                    >
+                      <span>♚ Negras:</span>
+                      <span>{formatChessClock(blackClockSeconds)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold opacity-80 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                      {getChessTimeControlById(matchTimeControlId).label}
+                    </span>
+                    {mode === 'friend' && (
+                      <button
+                        type="button"
+                        data-testid="open-chess-invite-modal-btn"
+                        onClick={() => setInviteModalOpen(true)}
+                        className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        Configurar Reloj / Retar ♟️
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="text-sm font-bold">{statusBanner}</div>
@@ -896,7 +1567,7 @@ export function ChessSectionView({
                           setBotElo(lvl.elo);
                           resetMatch('bot', lvl.elo);
                         }}
-                        className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all ${
+                        className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
                           isSelected
                             ? 'border-emerald-500 bg-emerald-500/15 shadow-xs'
                             : isTeenDark
@@ -921,33 +1592,57 @@ export function ChessSectionView({
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                <h2 className="font-bold text-base">
-                  Amigo Conectado en la Partida
-                </h2>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-bold text-base">
+                    Partida con Amigo y Reloj
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setInviteModalOpen(true)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Configurar y Enviar Reto ♟️
+                  </button>
+                </div>
+
                 {acceptedFriends.length > 0 && (
                   <div className="space-y-2">
+                    <div className="text-xs font-bold opacity-75">
+                      Tus amigos aceptados ({acceptedFriends.length}):
+                    </div>
                     {acceptedFriends.map((fr) => (
-                      <button
+                      <div
                         key={fr.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedFriendId(fr.id);
-                          resetMatch('friend');
-                        }}
-                        className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between ${
+                        className={`w-full p-3 rounded-2xl border flex items-center justify-between gap-2 ${
                           selectedFriendId === fr.id
                             ? 'border-emerald-500 bg-emerald-500/15 font-bold'
-                            : 'border-slate-200'
+                            : 'border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        <span>
-                          {fr.name} ({fr.username})
-                        </span>
-                        <span className="text-xs text-emerald-600 font-bold">
-                          Amistad Aceptada
-                        </span>
-                      </button>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold truncate">
+                            {fr.name} ({fr.friendCode || fr.username})
+                          </div>
+                          <div className="text-[11px] text-emerald-600 font-bold">
+                            Tu color asignado:{' '}
+                            {playerAssignedColor === 'w'
+                              ? 'Blancas ♔'
+                              : 'Negras ♚'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFriendId(fr.id);
+                            setInviteModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs shrink-0 cursor-pointer"
+                        >
+                          ♟️ Retar
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -40,16 +40,27 @@ import { playRewardSound } from './utils/soundEffects';
 import { RegistrationScreen } from './components/RegistrationModal';
 import { LearnView } from './components/LearnView';
 import { LibraryView } from './components/LibraryView';
-import { ChessSectionView } from './components/ChessSectionView';
+import {
+  ChessSectionView,
+  AcceptedFriendSummary,
+} from './components/ChessSectionView';
 import { GamesView } from './components/GamesView';
 import { FriendsChatView, FriendshipRecord } from './components/FriendsChatView';
 import { ProfileParentalView } from './components/ProfileParentalView';
 import { ShopView } from './components/ShopView';
 import { MascotCompanion } from './components/ArtworkRenderer';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { Chess } from 'chess.js';
+import {
+  ChessTimeControlId,
+  ChessColorPreference,
+  getChessTimeControlById,
+  resolveChessInviteColors,
+} from './utils/chessEngine';
 import {
   realtimeNetwork,
   GlobalNetworkState,
+  NetworkChessMatch,
 } from './utils/realtimeNetwork';
 
 interface StoredFriendship {
@@ -65,10 +76,11 @@ interface StoredFriendship {
     senderName: string;
     text: string;
     timestamp: string;
-    attachmentType?: 'gif' | 'drawing';
+    attachmentType?: 'gif' | 'drawing' | 'chess_invite';
     attachmentId?: string;
     attachmentTitle?: string;
     attachmentUrl?: string;
+    chessMatchId?: string;
   }[];
 }
 
@@ -159,10 +171,14 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<NavTabId>('learn');
   const [graduationCelebrationOpen, setGraduationCelebrationOpen] = useState(false);
+  const [activeChessMatchId, setActiveChessMatchId] = useState<string | null>(
+    null
+  );
   const [networkState, setNetworkState] = useState<GlobalNetworkState>({
     profiles: {},
     friendships: {},
     rooms: {},
+    chessMatches: {},
   });
 
   const rawProfile = accounts.find((a) => a.id === activeUserId) || null;
@@ -174,6 +190,7 @@ export default function App() {
         profiles: { ...state.profiles },
         friendships: { ...state.friendships },
         rooms: { ...state.rooms },
+        chessMatches: { ...state.chessMatches },
       });
     });
     return unsubscribe;
@@ -795,10 +812,11 @@ export default function App() {
     friendshipId: string,
     text: string,
     attachment?: {
-      attachmentType: 'gif' | 'drawing';
+      attachmentType: 'gif' | 'drawing' | 'chess_invite';
       attachmentId?: string;
       attachmentTitle?: string;
       attachmentUrl?: string;
+      chessMatchId?: string;
     }
   ) => {
     setStoredFriendships((prev) =>
@@ -827,6 +845,50 @@ export default function App() {
       text,
       attachment
     );
+  };
+
+  const handleSendChessChallengeFromChat = (params: {
+    friend: AcceptedFriendSummary;
+    timeControlId: ChessTimeControlId;
+    colorPreference: ChessColorPreference;
+  }) => {
+    const tcOption = getChessTimeControlById(params.timeControlId);
+    const colors = resolveChessInviteColors(params.colorPreference);
+    const freshChess = new Chess();
+    const matchId = `chess_match_${Date.now()}`;
+
+    const newMatch: NetworkChessMatch = {
+      id: matchId,
+      eventType: 'CHESS_INVITE',
+      hostId: currentProfile.id,
+      hostName: currentProfile.name,
+      hostFriendCode: currentProfile.friendCode,
+      hostAvatarId: currentProfile.avatarId,
+      hostColor: colors.hostColor,
+      guestId: params.friend.id,
+      guestName: params.friend.name,
+      guestFriendCode: params.friend.friendCode || params.friend.username,
+      guestAvatarId: params.friend.avatarId,
+      guestColor: colors.guestColor,
+      timeControlId: params.timeControlId,
+      timeControlLabel: tcOption.label,
+      initialSeconds: tcOption.initialSeconds,
+      whiteTimeSeconds: tcOption.initialSeconds,
+      blackTimeSeconds: tcOption.initialSeconds,
+      colorPreference: params.colorPreference,
+      status: 'pending_invite',
+      fen: freshChess.fen(),
+      moveHistorySan: [],
+      turn: 'w',
+      updatedAt: Date.now(),
+    };
+
+    realtimeNetwork.sendChessInvite({
+      match: newMatch,
+      friendshipId: params.friend.friendshipId,
+    });
+    setActiveChessMatchId(matchId);
+    setActiveTab('chess');
   };
 
   // Los 4 botones principales de navegación con línea fina (strokeWidth={2}) + el 5º botón de Modo Claro/Oscuro
@@ -877,14 +939,48 @@ export default function App() {
     ? 'bg-[#FFFDF7]/95 border-[#FED7AA] text-slate-900'
     : 'bg-white/95 border-slate-200 text-slate-900';
 
-  const acceptedFriendsForChess = userFriendships
+  const acceptedFriendsForChess: AcceptedFriendSummary[] = userFriendships
     .filter((f) => f.statusForCurrent === 'accepted')
     .map((f) => ({
       id: f.peerProfile.id,
+      friendCode: f.peerProfile.friendCode,
       username: f.peerProfile.username,
       name: f.peerProfile.name,
       avatarId: f.peerProfile.avatarId,
+      friendshipId: f.id,
     }));
+
+  // Buscar invitaciones de Ajedrez entrantes en tiempo real (CHESS_INVITE) para el jugador actual
+  const incomingChessInvites = Object.values(networkState.chessMatches).filter(
+    (m) =>
+      m.status === 'pending_invite' &&
+      m.hostId !== currentProfile.id &&
+      (m.guestId === currentProfile.id ||
+        (m.guestFriendCode &&
+          m.guestFriendCode.toUpperCase() ===
+            currentProfile.friendCode.toUpperCase()) ||
+        m.guestName.toLowerCase() === currentProfile.name.toLowerCase())
+  );
+
+  // Partida activa sincronizada en red (por ID seleccionado o la más reciente donde participa el usuario)
+  const activeNetworkChessMatch: NetworkChessMatch | null = (() => {
+    if (activeChessMatchId && networkState.chessMatches[activeChessMatchId]) {
+      return networkState.chessMatches[activeChessMatchId];
+    }
+    const myMatches = Object.values(networkState.chessMatches)
+      .filter(
+        (m) =>
+          m.status !== 'declined' &&
+          (m.hostId === currentProfile.id ||
+            m.guestId === currentProfile.id ||
+            m.hostFriendCode?.toUpperCase() ===
+              currentProfile.friendCode.toUpperCase() ||
+            m.guestFriendCode?.toUpperCase() ===
+              currentProfile.friendCode.toUpperCase())
+      )
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return myMatches[0] || null;
+  })();
 
   return (
     <div className={`min-h-screen w-full max-w-[100vw] overflow-x-hidden flex flex-col transition-colors duration-200 ${shellBgClass} pb-28`}>
@@ -963,7 +1059,58 @@ export default function App() {
       </header>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="max-w-6xl w-full mx-auto px-3 sm:px-8 py-6 flex-1 min-w-0">
+      <main className="max-w-6xl w-full mx-auto px-3 sm:px-8 py-6 flex-1 min-w-0 space-y-5">
+        {/* BANNER GLOBAL DE INVITACIÓN DE AJEDREZ EN TIEMPO REAL (CHESS_INVITE) */}
+        {incomingChessInvites.map((invite) => (
+          <div
+            key={invite.id}
+            data-testid="incoming-chess-invite-banner"
+            className="p-4 sm:p-5 rounded-[28px] bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white border-4 border-amber-300 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-300 text-slate-950 text-[11px] font-black uppercase tracking-wider">
+                <span>♟️ Solicitud de Partida en Tiempo Real (CHESS_INVITE)</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black font-display">
+                ¡{invite.hostName} ({invite.hostFriendCode}) te reta a jugar Ajedrez!
+              </h3>
+              <p className="text-xs sm:text-sm text-white/90 font-semibold">
+                Reloj seleccionado: <strong>{invite.timeControlLabel}</strong> · Juegas con{' '}
+                <strong>
+                  {invite.guestColor === 'w' ? 'Blancas ♔' : 'Negras ♚'}
+                </strong>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                data-testid="accept-chess-invite-btn"
+                onClick={() => {
+                  playRewardSound('fanfare');
+                  realtimeNetwork.respondChessInvite(invite.id, 'accept');
+                  setActiveChessMatchId(invite.id);
+                  setActiveTab('chess');
+                }}
+                className="px-4 py-2.5 rounded-2xl bg-[#BEF264] hover:bg-[#a3e635] text-slate-950 font-black text-xs sm:text-sm shadow-md cursor-pointer"
+              >
+                Aceptar Partida ♟️
+              </button>
+              <button
+                type="button"
+                data-testid="decline-chess-invite-btn"
+                onClick={() => {
+                  playRewardSound('pop');
+                  realtimeNetwork.respondChessInvite(invite.id, 'decline');
+                }}
+                className="px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs cursor-pointer"
+              >
+                Rechazar
+              </button>
+            </div>
+          </div>
+        ))}
+
         {currentSafeTab === 'learn' && (
           <LearnView
             userName={currentProfile.name}
@@ -1004,10 +1151,16 @@ export default function App() {
 
         {currentSafeTab === 'chess' && (
           <ChessSectionView
+            currentUserId={currentProfile.id}
+            currentUserName={currentProfile.name}
+            currentUserFriendCode={currentProfile.friendCode}
+            currentUserAvatarId={currentProfile.avatarId}
             ageGroup={currentProfile.ageGroup}
             chessXp={currentProfile.chessXp}
             completedChessLessonIds={currentProfile.completedChessLessonIds}
             acceptedFriends={acceptedFriendsForChess}
+            activeNetworkMatch={activeNetworkChessMatch}
+            onOpenFriendsTab={() => setActiveTab('friends')}
             selectedBoardId={currentProfile.selectedBoardId}
             selectedPiecesId={currentProfile.selectedPiecesId}
             selectedCoachId={currentProfile.selectedCoachId}
@@ -1047,6 +1200,14 @@ export default function App() {
             onRejectFriend={handleRejectFriend}
             onBlockOrReportFriend={handleBlockOrReportFriend}
             onSendMessage={handleSendMessage}
+            onSendChessChallenge={handleSendChessChallengeFromChat}
+            onOpenChessMatchById={(matchId) => {
+              if (matchId) {
+                realtimeNetwork.respondChessInvite(matchId, 'accept');
+                setActiveChessMatchId(matchId);
+              }
+              setActiveTab('chess');
+            }}
             onEarnGameXp={handleEarnGameXp}
             onOpenParentalPanel={() => setActiveTab('profile')}
           />

@@ -36,6 +36,10 @@ import {
 import {
   computeRealChessBotMove,
   verifyChessPuzzleMove,
+  CHESS_TIME_CONTROLS,
+  resolveChessInviteColors,
+  formatChessClock,
+  tickChessClock,
 } from './chessEngine';
 
 test('createFreshUserAccount initializes a brand new child account completely from zero (0 XP, 0 streak, 0 enrolled courses)', () => {
@@ -396,3 +400,59 @@ test('Real Chess Bot Engine (200, 1000, and 2000 ELO) captures hanging pieces an
 function hangingQueenQueenFenOrDefault(fen: string): string {
   return fen;
 }
+
+test('Chess Friend Match Time Controls, Color Assignment, and Live Clock Ticking work accurately', () => {
+  assert.equal(CHESS_TIME_CONTROLS.length, 5);
+  assert.deepEqual(
+    CHESS_TIME_CONTROLS.map((tc) => tc.id),
+    ['3min', '5min', '10min', '15min', 'unlimited']
+  );
+
+  // Format clock
+  assert.equal(formatChessClock(180), '03:00');
+  assert.equal(formatChessClock(300), '05:00');
+  assert.equal(formatChessClock(600), '10:00');
+  assert.equal(formatChessClock(900), '15:00');
+  assert.equal(formatChessClock(null), '∞ Sin tiempo');
+
+  // Resolve colors
+  assert.deepEqual(resolveChessInviteColors('w'), {
+    hostColor: 'w',
+    guestColor: 'b',
+  });
+  assert.deepEqual(resolveChessInviteColors('b'), {
+    hostColor: 'b',
+    guestColor: 'w',
+  });
+  assert.deepEqual(resolveChessInviteColors('random', 2), {
+    hostColor: 'w',
+    guestColor: 'b',
+  });
+  assert.deepEqual(resolveChessInviteColors('random', 3), {
+    hostColor: 'b',
+    guestColor: 'w',
+  });
+
+  // Tick active white clock
+  const tick1 = tickChessClock({
+    whiteTimeSeconds: 180,
+    blackTimeSeconds: 180,
+    activeTurn: 'w',
+    status: 'active',
+  });
+  assert.equal(tick1.whiteTimeSeconds, 179);
+  assert.equal(tick1.blackTimeSeconds, 180);
+  assert.equal(tick1.status, 'active');
+
+  // Timeout detection when clock hits 0
+  const timeoutTick = tickChessClock({
+    whiteTimeSeconds: 1,
+    blackTimeSeconds: 145,
+    activeTurn: 'w',
+    status: 'active',
+  });
+  assert.equal(timeoutTick.whiteTimeSeconds, 0);
+  assert.equal(timeoutTick.status, 'completed');
+  assert.equal(timeoutTick.timeoutWinner, 'b');
+});
+
