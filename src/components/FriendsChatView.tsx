@@ -30,6 +30,8 @@ import {
   canUsersChat,
   detectGroomingOrPersonalDataInChat,
   evaluateChatImageSafety,
+  filterPrivateRoomMessages,
+  getPrivateChatRoomId,
   isChatEnabledForGroup,
   moderateChatMessage,
   requiresParentalConsent,
@@ -51,6 +53,8 @@ import { playRewardSound } from '../utils/soundEffects';
 export interface ChatMessageItem {
   id: string;
   senderId: string;
+  receiverId?: string;
+  privateRoomId?: string;
   senderName: string;
   text: string;
   timestamp: string;
@@ -189,6 +193,19 @@ export function FriendsChatView({
     friendships.find((f) => f.id === selectedFriendshipId) ||
     acceptedFriends[0] ||
     friendships[0];
+
+  // Canal de chat 100% privado e independiente identificado exclusivamente por el par ordenado de IDs:
+  // const privateRoomId = [currentUser.id, friend.id].sort().join('_');
+  const activePrivateRoomId = activeFriendship
+    ? getPrivateChatRoomId(currentUser.id, activeFriendship.peerProfile.id)
+    : '';
+  const isolatedPrivateMessages = activeFriendship
+    ? filterPrivateRoomMessages(
+        activeFriendship.chatMessages,
+        currentUser.id,
+        activeFriendship.peerProfile.id
+      )
+    : [];
 
   const chatEligibility = activeFriendship
     ? canUsersChat(
@@ -600,7 +617,7 @@ export function FriendsChatView({
 
             <form
               onSubmit={handleDirectConnectSubmit}
-              className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+              className="flex flex-col gap-2.5"
             >
               <input
                 type="text"
@@ -609,7 +626,7 @@ export function FriendsChatView({
                 onChange={(e) => setDirectCodeInput(e.target.value)}
                 placeholder="Código (ej. LUMI-4829) o nombre..."
                 aria-label="Código de Amigo para conectar directo"
-                className={`flex-1 h-11 px-3.5 rounded-2xl border text-xs font-mono font-bold ${
+                className={`w-full h-11 px-3.5 rounded-2xl border text-xs font-mono font-bold ${
                   isTeenDark
                     ? 'bg-[#120E20] border-purple-800/50 text-white'
                     : 'bg-slate-50 dark:bg-[#120E20] border-slate-200 dark:border-purple-800/50 text-slate-900 dark:text-white'
@@ -618,10 +635,10 @@ export function FriendsChatView({
               <button
                 type="submit"
                 data-testid="direct-connect-friend-code-btn"
-                className="h-11 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
+                className="w-full h-11 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Zap className="w-4 h-4" />
-                Conectar directo por Código de Amigo
+                <Zap className="w-4 h-4 shrink-0" />
+                <span>Conectar directo por Código de Amigo</span>
               </button>
             </form>
           </div>
@@ -1002,6 +1019,7 @@ export function FriendsChatView({
           ) : (
             <div
               data-testid="pastel-lilac-pink-chat-panel"
+              data-private-room-id={activePrivateRoomId}
               className="rounded-[40px] border-4 border-[#F9A8D4]/60 bg-gradient-to-b from-[#F5EFFF] via-[#C8B8FF] to-[#A594F9] text-slate-900 p-5 sm:p-7 flex flex-col justify-between min-h-[600px] shadow-xl relative overflow-hidden"
             >
               {activeFriendship ? (
@@ -1165,7 +1183,7 @@ export function FriendsChatView({
                         </p>
                       </div>
                     ) : (
-                      activeFriendship.chatMessages.map((msg) => {
+                      isolatedPrivateMessages.map((msg) => {
                         const isMine = msg.senderId === currentUser.id;
                         const matchedGif =
                           msg.attachmentType === 'gif'

@@ -31,6 +31,8 @@ import {
   calculateActivityGemReward,
   createFreshUserAccount,
   ensureShopDefaultsOnProfile,
+  filterPrivateRoomMessages,
+  getPrivateChatRoomId,
   getNavigationTabsForAgeGroup,
   checkGroup1ToGroup2Graduation,
   promoteChildFromGroup1ToGroup2,
@@ -73,6 +75,8 @@ interface StoredFriendship {
   chatMessages: {
     id: string;
     senderId: string;
+    receiverId?: string;
+    privateRoomId?: string;
     senderName: string;
     text: string;
     timestamp: string;
@@ -578,7 +582,11 @@ export default function App() {
           ageGroup: sf.ageGroup,
           statusForCurrent,
           peerProfile: resolvedPeerProfile,
-          chatMessages: sf.chatMessages,
+          chatMessages: filterPrivateRoomMessages(
+            sf.chatMessages || [],
+            currentProfile.id,
+            resolvedPeerProfile.id
+          ),
         });
       });
 
@@ -595,7 +603,7 @@ export default function App() {
       if (!isRequester && !isReceiver) return;
 
       const peerPub = isRequester ? nf.receiverProfile : nf.requesterProfile;
-      if (!peerPub) return;
+      if (!peerPub || peerPub.id === currentProfile.id) return;
 
       const statusForCurrent =
         nf.status === 'accepted'
@@ -622,7 +630,11 @@ export default function App() {
           xp: peerPub.xp,
           streak: peerPub.streak,
         },
-        chatMessages: nf.chatMessages || [],
+        chatMessages: filterPrivateRoomMessages(
+          nf.chatMessages || [],
+          currentProfile.id,
+          peerPub.id
+        ),
       });
     });
 
@@ -819,9 +831,18 @@ export default function App() {
       chessMatchId?: string;
     }
   ) => {
+    const activeRecord = userFriendships.find((f) => f.id === friendshipId);
+    const receiverId = activeRecord?.peerProfile.id || '';
+    const privateRoomId = receiverId
+      ? getPrivateChatRoomId(currentProfile.id, receiverId)
+      : undefined;
+
     setStoredFriendships((prev) =>
       prev.map((sf) => {
         if (sf.id !== friendshipId) return sf;
+        const peerId =
+          sf.requesterId === currentProfile.id ? sf.receiverId : sf.requesterId;
+        const roomKey = getPrivateChatRoomId(currentProfile.id, peerId);
         return {
           ...sf,
           chatMessages: [
@@ -829,6 +850,8 @@ export default function App() {
             {
               id: `msg_${Date.now()}`,
               senderId: currentProfile.id,
+              receiverId: peerId,
+              privateRoomId: roomKey,
               senderName: currentProfile.name,
               text,
               timestamp: 'Ahora',
@@ -843,7 +866,8 @@ export default function App() {
       currentProfile.id,
       currentProfile.name,
       text,
-      attachment
+      attachment,
+      receiverId || undefined
     );
   };
 

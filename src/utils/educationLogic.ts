@@ -1105,3 +1105,78 @@ export function canUsersChat(
   return { canChat: true };
 }
 
+export interface ShuffledExerciseOptions {
+  options: string[];
+  correctIndex: number;
+  correctAnswer: string;
+}
+
+/**
+ * 2. Algoritmo de mezcla aleatoria (Fisher-Yates Shuffle) para las opciones de respuesta
+ * de cada ejercicio. Garantiza que la respuesta correcta cambie de posición (arriba, al medio
+ * o abajo) dinámicamente en cada intento y actualiza el índice de la opción correcta.
+ */
+export function shuffleExerciseOptionsFisherYates(
+  options: readonly string[],
+  correctAnswer: string,
+  rng: () => number = Math.random
+): ShuffledExerciseOptions {
+  const copy = [...options];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const rand = Math.max(0, Math.min(0.9999999, rng()));
+    const j = Math.floor(rand * (i + 1));
+    const temp = copy[i];
+    copy[i] = copy[j];
+    copy[j] = temp;
+  }
+  const newCorrectIndex = copy.indexOf(correctAnswer);
+  return {
+    options: copy,
+    correctIndex: newCorrectIndex >= 0 ? newCorrectIndex : 0,
+    correctAnswer,
+  };
+}
+
+/**
+ * 3. Genera el identificador único de sala privada de chat (`privateRoomId`)
+ * combinando exclusivamente los IDs de los dos participantes ordenados alfabéticamente:
+ * `[currentUser.id, friend.id].sort().join('_')`
+ */
+export function getPrivateChatRoomId(userAId: string, userBId: string): string {
+  return [userAId.trim(), userBId.trim()].sort().join('_');
+}
+
+/**
+ * 3. Filtra estrictamente los mensajes de una conversación privada para garantizar aislamiento total:
+ * Ningún usuario puede ver ni recibir mensajes que su amigo hable con una tercera persona.
+ */
+export function filterPrivateRoomMessages<
+  T extends {
+    senderId: string;
+    receiverId?: string;
+    privateRoomId?: string;
+  }
+>(messages: readonly T[], currentUserId: string, friendId: string): T[] {
+  const expectedRoomId = getPrivateChatRoomId(currentUserId, friendId);
+  return messages.filter((msg) => {
+    const isExactParticipantPair =
+      (msg.senderId === currentUserId && msg.receiverId === friendId) ||
+      (msg.senderId === friendId && msg.receiverId === currentUserId);
+
+    if (msg.privateRoomId && msg.privateRoomId !== expectedRoomId) {
+      return false;
+    }
+
+    if (msg.receiverId) {
+      return isExactParticipantPair;
+    }
+
+    if (msg.privateRoomId === expectedRoomId) {
+      return msg.senderId === currentUserId || msg.senderId === friendId;
+    }
+
+    return false;
+  });
+}
+
+

@@ -26,10 +26,14 @@ import {
   evaluateFacialAgeVerification,
   evaluateChatImageSafety,
   detectGroomingOrPersonalDataInChat,
+  shuffleExerciseOptionsFisherYates,
+  getPrivateChatRoomId,
+  filterPrivateRoomMessages,
   ANTI_CHILD_PHOTO_LEGAL_MESSAGE,
   SAFE_KIDS_GIFS,
 } from './educationLogic';
 import {
+  COURSES_DATA,
   getBooksForAgeGroup,
   CHESS_ACADEMY_LESSONS,
 } from '../data/curriculumData';
@@ -455,4 +459,154 @@ test('Chess Friend Match Time Controls, Color Assignment, and Live Clock Ticking
   assert.equal(timeoutTick.status, 'completed');
   assert.equal(timeoutTick.timeoutWinner, 'b');
 });
+
+test('2) Fisher-Yates Shuffle (shuffleExerciseOptionsFisherYates) randomizes answer positions and tracks correctIndex accurately', () => {
+  const baseOptions = [
+    'Respuesta Correcta A',
+    'Distractor B',
+    'Distractor C',
+    'Distractor D',
+  ];
+
+  // Deterministic RNG sequence that moves the first element away from index 0
+  const rngSeq = [0.2, 0.85, 0.4];
+  let idx = 0;
+  const shuffled1 = shuffleExerciseOptionsFisherYates(
+    baseOptions,
+    'Respuesta Correcta A',
+    () => rngSeq[idx++ % rngSeq.length]
+  );
+
+  assert.equal(shuffled1.options.length, 4);
+  assert.equal(
+    shuffled1.options[shuffled1.correctIndex],
+    'Respuesta Correcta A'
+  );
+  assert.equal(shuffled1.correctAnswer, 'Respuesta Correcta A');
+
+  // Verify across multiple random runs that the correct answer appears across different indices (0, 1, 2, 3)
+  const observedPositions = new Set<number>();
+  for (let run = 0; run < 40; run++) {
+    const res = shuffleExerciseOptionsFisherYates(
+      baseOptions,
+      'Respuesta Correcta A'
+    );
+    assert.equal(res.options[res.correctIndex], 'Respuesta Correcta A');
+    observedPositions.add(res.correctIndex);
+  }
+  assert.equal(observedPositions.size >= 3, true);
+});
+
+test('3) Private Chat Room Isolation (getPrivateChatRoomId & filterPrivateRoomMessages) prevents cross-leakage when User A and User B share friend User C', () => {
+  const userA = 'user_ana_101';
+  const userB = 'user_bruno_202';
+  const userC = 'user_carlos_303';
+
+  const roomAC = getPrivateChatRoomId(userA, userC);
+  const roomCA = getPrivateChatRoomId(userC, userA);
+  const roomBC = getPrivateChatRoomId(userB, userC);
+
+  // Room ID is symmetric for A<->C and strictly distinct from B<->C
+  assert.equal(roomAC, 'user_ana_101_user_carlos_303');
+  assert.equal(roomAC, roomCA);
+  assert.notEqual(roomAC, roomBC);
+
+  const mixedPool = [
+    {
+      id: 'm1',
+      senderId: userA,
+      receiverId: userC,
+      privateRoomId: roomAC,
+      text: 'Hola Carlos, soy Ana',
+    },
+    {
+      id: 'm2',
+      senderId: userC,
+      receiverId: userA,
+      privateRoomId: roomAC,
+      text: 'Hola Ana, ¿jugamos ajedrez?',
+    },
+    {
+      id: 'm3',
+      senderId: userB,
+      receiverId: userC,
+      privateRoomId: roomBC,
+      text: 'Secreto entre Bruno y Carlos',
+    },
+    {
+      id: 'm4',
+      senderId: userC,
+      receiverId: userB,
+      privateRoomId: roomBC,
+      text: 'Respuesta privada de Carlos para Bruno',
+    },
+  ];
+
+  // When User A views chat with User C, ONLY messages between A and C are visible
+  const visibleToAWithC = filterPrivateRoomMessages(mixedPool, userA, userC);
+  assert.deepEqual(
+    visibleToAWithC.map((m) => m.id),
+    ['m1', 'm2']
+  );
+
+  // When User B views chat with User C, ONLY messages between B and C are visible
+  const visibleToBWithC = filterPrivateRoomMessages(mixedPool, userB, userC);
+  assert.deepEqual(
+    visibleToBWithC.map((m) => m.id),
+    ['m3', 'm4']
+  );
+});
+
+test('4) Massive Courses: every course in COURSES_DATA has 100 complete lessons divided into 10 themed units of 10 lessons each, with varied correctIndex (0, 1, 2, 3)', () => {
+  assert.ok(COURSES_DATA.length >= 16);
+
+  const globalCorrectIndices = new Set<number>();
+
+  for (const course of COURSES_DATA) {
+    assert.equal(
+      course.lessons.length,
+      100,
+      `Course ${course.id} (${course.title}) must have exactly 100 lessons`
+    );
+    assert.equal(
+      course.units?.length,
+      10,
+      `Course ${course.id} must have 10 themed units`
+    );
+
+    // Check that each unit 1..10 has exactly 10 lessons
+    for (let u = 1; u <= 10; u++) {
+      const unitLessons = course.lessons.filter((l) => l.unitNumber === u);
+      assert.equal(
+        unitLessons.length,
+        10,
+        `Course ${course.id} Unit ${u} must contain 10 lessons`
+      );
+    }
+
+    for (const lesson of course.lessons) {
+      assert.ok(
+        lesson.exercises.length >= 1,
+        `Lesson ${lesson.id} must have exercises`
+      );
+      for (const ex of lesson.exercises) {
+        if (ex.options && ex.options.length > 0 && ex.correctAnswer) {
+          const idx = ex.options.indexOf(ex.correctAnswer);
+          assert.ok(
+            idx >= 0,
+            `Exercise ${ex.id} must contain its correctAnswer in options`
+          );
+          globalCorrectIndices.add(idx);
+        }
+      }
+    }
+  }
+
+  // Verify that the question database varies correctIndex across 0, 1, 2, and 3
+  assert.equal(globalCorrectIndices.has(0), true);
+  assert.equal(globalCorrectIndices.has(1), true);
+  assert.equal(globalCorrectIndices.has(2), true);
+  assert.equal(globalCorrectIndices.has(3), true);
+});
+
 

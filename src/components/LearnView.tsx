@@ -55,6 +55,7 @@ import {
   calculateLessonReward,
   getEncouragementMessage,
   isLessonUnlocked,
+  shuffleExerciseOptionsFisherYates,
 } from '../utils/educationLogic';
 import { verifyChessPuzzleMove } from '../utils/chessEngine';
 import {
@@ -140,6 +141,7 @@ export function LearnView({
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(13);
   const [courseFilterLevel, setCourseFilterLevel] = useState<'todos' | 'inicial' | 'avanzado'>('todos');
   const [courseSelectorModalOpen, setCourseSelectorModalOpen] = useState<boolean>(false);
+  const [selectedUnitNumber, setSelectedUnitNumber] = useState<number | 'all'>(1);
 
   // Todos los cursos permitidos para la edad del niño
   const availableCoursesForAge = COURSES_DATA.filter(
@@ -232,6 +234,33 @@ export function LearnView({
   };
 
   const currentExercise = activeLesson?.exercises[exerciseIdx];
+
+  // Mezcla al azar Fisher-Yates cada vez que se carga una pregunta o ejercicio en pantalla
+  const [shuffledExerciseState, setShuffledExerciseState] = useState<{
+    options: string[];
+    correctAnswer: string;
+    correctIndex: number;
+  }>({
+    options: [],
+    correctAnswer: '',
+    correctIndex: 0,
+  });
+
+  useEffect(() => {
+    if (currentExercise?.options && currentExercise.options.length > 0) {
+      const shuffled = shuffleExerciseOptionsFisherYates(
+        currentExercise.options,
+        currentExercise.correctAnswer
+      );
+      setShuffledExerciseState(shuffled);
+    } else {
+      setShuffledExerciseState({
+        options: [],
+        correctAnswer: currentExercise?.correctAnswer || '',
+        correctIndex: 0,
+      });
+    }
+  }, [activeLesson?.id, exerciseIdx, currentExercise]);
 
   useEffect(() => {
     if (currentExercise?.type === 'chess_puzzle' && currentExercise.chessPuzzle) {
@@ -397,7 +426,9 @@ export function LearnView({
     }
 
     if (!selectedOption) return;
-    const isCorrect = selectedOption === currentExercise.correctAnswer;
+    const expectedAnswer =
+      shuffledExerciseState.correctAnswer || currentExercise.correctAnswer;
+    const isCorrect = selectedOption === expectedAnswer;
     playRewardSound(isCorrect ? 'correct' : 'wrong');
     if (isCorrect) {
       setCorrectCount((prev) => prev + 1);
@@ -1539,7 +1570,7 @@ export function LearnView({
                         : 'text-emerald-600 dark:text-[#BEF264]'
                     }`}
                   >
-                    Ruta Gamificada Estilo Duolingo · +5 Gemas por Nivel
+                    Ruta Gamificada · {activeCourse.lessons.length} Lecciones en 10 Unidades · +5 Gemas por Nivel
                   </span>
                   <h2 className="text-xl sm:text-2xl font-extrabold mt-0.5 font-display">
                     {activeCourse.title}
@@ -1564,120 +1595,234 @@ export function LearnView({
                     size={64}
                     strokeWidth={7}
                     color={isTeenDark ? '#BEF264' : '#10B981'}
-                    label="Avance"
+                    label={`${completedInCourse}/${activeCourse.lessons.length}`}
                   />
                 </div>
               </div>
 
-              <div className="relative space-y-5">
-                {activeCourse.lessons.map((lesson, idx) => {
-                  const prevLessonId =
-                    idx > 0 ? activeCourse.lessons[idx - 1].id : null;
-                  const isUnlocked = isLessonUnlocked(
-                    idx,
-                    prevLessonId,
-                    completedLessonIds
-                  );
-                  const isCompleted = completedLessonIds.includes(lesson.id);
-                  const isLast = idx === activeCourse.lessons.length - 1;
+              {/* SELECTOR DE LAS 10 UNIDADES TEMÁTICAS (10 LECCIONES POR UNIDAD = 100 LECCIONES) */}
+              <div
+                data-testid="course-units-selector-bar"
+                className="space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-black uppercase tracking-wider opacity-80">
+                    Explorar las 10 Unidades del Curso (100 Lecciones Progresivas):
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="unit-filter-all-btn"
+                    onClick={() => {
+                      playRewardSound('pop');
+                      setSelectedUnitNumber(
+                        selectedUnitNumber === 'all' ? 1 : 'all'
+                      );
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                      selectedUnitNumber === 'all'
+                        ? 'bg-[#C84B8A] text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    {selectedUnitNumber === 'all'
+                      ? 'Viendo las 100 Lecciones Completas'
+                      : 'Ver las 100 Lecciones Juntas'}
+                  </button>
+                </div>
 
-                  return (
-                    <div key={lesson.id} className="relative">
-                      {!isLast && (
-                        <div
-                          aria-hidden="true"
-                          className={`hidden sm:block absolute left-11 top-20 bottom-[-22px] w-1 rounded-full ${
-                            isCompleted
-                              ? 'bg-emerald-500'
-                              : 'bg-slate-200 dark:bg-slate-700'
-                          }`}
-                        />
-                      )}
-                      <div
-                        className={`rounded-3xl border-2 p-4 sm:p-5 transition-all ${
-                          isCompleted
-                            ? 'bg-emerald-500/10 border-emerald-500/50'
-                            : isUnlocked
-                            ? isTeenDark
-                              ? 'bg-[#221B35] border-purple-700/60 shadow-sm'
-                              : 'bg-[#FFFDF7] dark:bg-[#221B35] border-amber-300 dark:border-purple-700/60 shadow-sm'
-                            : 'opacity-60 border-slate-200/50 dark:border-slate-800'
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((uNum) => {
+                    const unitMeta = activeCourse.units?.find(
+                      (u) => u.unitNumber === uNum
+                    );
+                    const unitLessons = activeCourse.lessons.filter(
+                      (l) => (l.unitNumber || Math.ceil(l.levelNumber / 10)) === uNum
+                    );
+                    const doneInUnit = unitLessons.filter((l) =>
+                      completedLessonIds.includes(l.id)
+                    ).length;
+                    const isSelectedUnit = selectedUnitNumber === uNum;
+
+                    return (
+                      <button
+                        key={uNum}
+                        type="button"
+                        data-testid={`unit-tab-${uNum}`}
+                        onClick={() => {
+                          playRewardSound('pop');
+                          setSelectedUnitNumber(uNum);
+                        }}
+                        className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                          isSelectedUnit
+                            ? 'bg-[#F5E6F0] dark:bg-purple-900/50 border-[#C84B8A] text-[#C84B8A] dark:text-pink-200 shadow-xs'
+                            : 'bg-slate-50 dark:bg-white/5 border-slate-200/70 dark:border-white/10 hover:border-[#C84B8A]/50'
                         }`}
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-start gap-4 min-w-0">
-                            <div
-                              className={`w-14 h-14 rounded-full border-b-4 flex items-center justify-center font-display font-black text-xl shrink-0 shadow-xs ${
-                                isCompleted
-                                  ? 'bg-emerald-500 border-emerald-700 text-white'
-                                  : isUnlocked
-                                  ? isTeenDark
-                                    ? 'bg-[#BEF264] border-[#84CC16] text-slate-950'
-                                    : 'bg-[#84CC16] border-[#4D7C0F] text-slate-950'
-                                  : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500'
-                              }`}
-                            >
-                              {isCompleted ? (
-                                <CheckCircle2 className="w-7 h-7" />
-                              ) : isUnlocked ? (
-                                lesson.levelNumber
-                              ) : (
-                                <Lock className="w-6 h-6" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold opacity-75">
-                                Nivel {lesson.levelNumber} · {lesson.durationMinutes} min · +{lesson.xpReward} XP · +5 Gemas
-                              </div>
-                              <h3
-                                className={`font-extrabold mt-0.5 ${
-                                  isYoungKid ? 'text-xl' : 'text-lg'
-                                }`}
-                              >
-                                {lesson.title}
-                              </h3>
-                              <p className="text-sm opacity-75 mt-1">
-                                {isUnlocked
-                                  ? lesson.description
-                                  : `Completa el Nivel ${lesson.levelNumber - 1} para desbloquear esta lección.`}
-                              </p>
-                            </div>
-                          </div>
+                        <div className="flex items-center justify-between text-[11px] font-black">
+                          <span>Unidad {uNum}</span>
+                          <span className="font-mono opacity-80">
+                            {doneInUnit}/10
+                          </span>
+                        </div>
+                        <div className="text-[10px] font-bold truncate opacity-85 mt-0.5">
+                          {unitMeta
+                            ? unitMeta.title.replace(/^Unidad \d+:\s*/i, '')
+                            : `Niveles ${(uNum - 1) * 10 + 1}-${uNum * 10}`}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                          <button
-                            type="button"
-                            data-testid={`start-lesson-btn-${lesson.id}`}
-                            disabled={!isUnlocked}
-                            onClick={() => startLesson(lesson)}
-                            className={`px-5 py-3 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 whitespace-nowrap shrink-0 cursor-pointer ${
-                              isYoungKid ? 'h-14 text-base px-6' : 'h-11'
-                            } ${
-                              !isUnlocked
-                                ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
-                                : isCompleted
-                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/30'
-                                : isTeenDark
-                                ? 'bg-[#BEF264] text-slate-950 hover:opacity-95 shadow-sm'
-                                : 'bg-[#84CC16] text-slate-950 hover:bg-[#65A30D] shadow-sm'
+              <div className="relative space-y-5">
+                {activeCourse.lessons
+                  .map((lesson, idx) => ({ lesson, idx }))
+                  .filter(({ lesson }) => {
+                    if (selectedUnitNumber === 'all') return true;
+                    const uNum =
+                      lesson.unitNumber || Math.ceil(lesson.levelNumber / 10);
+                    return uNum === selectedUnitNumber;
+                  })
+                  .map(({ lesson, idx }, renderIdx, filteredArr) => {
+                    const prevLessonId =
+                      idx > 0 ? activeCourse.lessons[idx - 1].id : null;
+                    const isUnlocked = isLessonUnlocked(
+                      idx,
+                      prevLessonId,
+                      completedLessonIds
+                    );
+                    const isCompleted = completedLessonIds.includes(lesson.id);
+                    const isLast = renderIdx === filteredArr.length - 1;
+                    const unitNum =
+                      lesson.unitNumber || Math.ceil(lesson.levelNumber / 10);
+                    const showUnitBanner =
+                      renderIdx === 0 ||
+                      (filteredArr[renderIdx - 1].lesson.unitNumber ||
+                        Math.ceil(
+                          filteredArr[renderIdx - 1].lesson.levelNumber / 10
+                        )) !== unitNum;
+
+                    return (
+                      <div key={lesson.id} className="relative space-y-3">
+                        {showUnitBanner && (
+                          <div
+                            data-testid={`unit-banner-${unitNum}`}
+                            className="p-4 rounded-2xl bg-gradient-to-r from-[#5B58EB] to-[#C84B8A] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm"
+                          >
+                            <div>
+                              <div className="text-[11px] font-black uppercase tracking-wider text-white/85">
+                                Unidad {unitNum} de 10 · Lecciones {(unitNum - 1) * 10 + 1} a {unitNum * 10}
+                              </div>
+                              <div className="font-display font-black text-base sm:text-lg">
+                                {lesson.unitTitle || `Unidad ${unitNum}`}
+                              </div>
+                            </div>
+                            <span className="px-3 py-1 rounded-full bg-white/20 text-xs font-extrabold self-start sm:self-center">
+                              10 Lecciones Paso a Paso
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="relative">
+                          {!isLast && (
+                            <div
+                              aria-hidden="true"
+                              className={`hidden sm:block absolute left-11 top-20 bottom-[-22px] w-1 rounded-full ${
+                                isCompleted
+                                  ? 'bg-emerald-500'
+                                  : 'bg-slate-200 dark:bg-slate-700'
+                              }`}
+                            />
+                          )}
+                          <div
+                            className={`rounded-3xl border-2 p-4 sm:p-5 transition-all ${
+                              isCompleted
+                                ? 'bg-emerald-500/10 border-emerald-500/50'
+                                : isUnlocked
+                                ? isTeenDark
+                                  ? 'bg-[#221B35] border-purple-700/60 shadow-sm'
+                                  : 'bg-[#FFFDF7] dark:bg-[#221B35] border-amber-300 dark:border-purple-700/60 shadow-sm'
+                                : 'opacity-60 border-slate-200/50 dark:border-slate-800'
                             }`}
                           >
-                            {!isUnlocked ? (
-                              <>
-                                <Lock className="w-4 h-4" />
-                                Bloqueada
-                              </>
-                            ) : (
-                              <>
-                                <Play className="w-4 h-4 fill-current" />
-                                {isCompleted ? 'Practicar de Nuevo' : 'Empezar Lección'}
-                              </>
-                            )}
-                          </button>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div className="flex items-start gap-4 min-w-0">
+                                <div
+                                  className={`w-14 h-14 rounded-full border-b-4 flex items-center justify-center font-display font-black text-xl shrink-0 shadow-xs ${
+                                    isCompleted
+                                      ? 'bg-emerald-500 border-emerald-700 text-white'
+                                      : isUnlocked
+                                      ? isTeenDark
+                                        ? 'bg-[#BEF264] border-[#84CC16] text-slate-950'
+                                        : 'bg-[#84CC16] border-[#4D7C0F] text-slate-950'
+                                      : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500'
+                                  }`}
+                                >
+                                  {isCompleted ? (
+                                    <CheckCircle2 className="w-7 h-7" />
+                                  ) : isUnlocked ? (
+                                    lesson.levelNumber
+                                  ) : (
+                                    <Lock className="w-6 h-6" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold opacity-75">
+                                    Unidad {unitNum} · Lección {lesson.levelNumber}/100 · {lesson.durationMinutes} min · +{lesson.xpReward} XP · +5 Gemas
+                                  </div>
+                                  <h3
+                                    className={`font-extrabold mt-0.5 ${
+                                      isYoungKid ? 'text-xl' : 'text-lg'
+                                    }`}
+                                  >
+                                    {lesson.title}
+                                  </h3>
+                                  <p className="text-sm opacity-75 mt-1">
+                                    {isUnlocked
+                                      ? lesson.description
+                                      : `Completa el Nivel ${lesson.levelNumber - 1} para desbloquear esta lección.`}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                data-testid={`start-lesson-btn-${lesson.id}`}
+                                disabled={!isUnlocked}
+                                onClick={() => startLesson(lesson)}
+                                className={`px-5 py-3 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 whitespace-nowrap shrink-0 cursor-pointer ${
+                                  isYoungKid ? 'h-14 text-base px-6' : 'h-11'
+                                } ${
+                                  !isUnlocked
+                                    ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+                                    : isCompleted
+                                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/30'
+                                    : isTeenDark
+                                    ? 'bg-[#BEF264] text-slate-950 hover:opacity-95 shadow-sm'
+                                    : 'bg-[#84CC16] text-slate-950 hover:bg-[#65A30D] shadow-sm'
+                                }`}
+                              >
+                                {!isUnlocked ? (
+                                  <>
+                                    <Lock className="w-4 h-4" />
+                                    Bloqueada
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-4 h-4 fill-current" />
+                                    {isCompleted
+                                      ? 'Practicar de Nuevo'
+                                      : 'Empezar Lección'}
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
 
               {/* SECCIÓN ESPECIAL DENTRO DEL CURSO DE ORACIÓN */}
@@ -2007,17 +2152,30 @@ export function LearnView({
                     </div>
                   )}
 
+                {activeLesson.theorySummary && (
+                  <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs font-semibold leading-relaxed">
+                    <span className="font-black uppercase tracking-wider text-indigo-700 mr-1.5">
+                      Explicación Paso a Paso:
+                    </span>
+                    {activeLesson.theorySummary}
+                  </div>
+                )}
+
                 {(currentExercise.type === 'multiple_choice' ||
                   currentExercise.type === 'syllable_builder' ||
                   currentExercise.type === 'dictation_fill') &&
-                  currentExercise.options && (
-                    <div className="grid grid-cols-1 gap-3">
-                      {currentExercise.options.map((option) => {
+                  shuffledExerciseState.options.length > 0 && (
+                    <div
+                      className="grid grid-cols-1 gap-3"
+                      data-testid="shuffled-exercise-options"
+                    >
+                      {shuffledExerciseState.options.map((option, optIdx) => {
                         const isChosen = selectedOption === option;
                         return (
                           <button
-                            key={option}
+                            key={`${option}-${optIdx}`}
                             type="button"
+                            data-testid={`exercise-option-${optIdx}`}
                             onClick={() => {
                               playRewardSound('pop');
                               setSelectedOption(option);

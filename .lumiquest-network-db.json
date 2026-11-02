@@ -155,6 +155,54 @@
       "xp": 0,
       "streak": 0,
       "updatedAt": 1793588701188
+    },
+    "usr_lucia_10_mpx": {
+      "id": "usr_lucia_10_mpx",
+      "friendCode": "LUMI-9018",
+      "username": "@lucia",
+      "name": "Lucia",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793591540096
+    },
+    "usr_lucia_10_f3w": {
+      "id": "usr_lucia_10_f3w",
+      "friendCode": "LUMI-9018",
+      "username": "@lucia",
+      "name": "Lucia",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793591550505
+    },
+    "peer_lumi4829": {
+      "id": "peer_lumi4829",
+      "friendCode": "LUMI-4829",
+      "username": "@lumi_4829",
+      "name": "Amigo LUMI-4829",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 120,
+      "streak": 2,
+      "updatedAt": 1793591550505
+    },
+    "usr_lucia_10_fjm": {
+      "id": "usr_lucia_10_fjm",
+      "friendCode": "LUMI-9018",
+      "username": "@lucia",
+      "name": "Lucia",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793591734224
     }
   },
   "friendships": {
@@ -364,6 +412,41 @@
         }
       ],
       "updatedAt": 1793588708246
+    },
+    "fr_peer_lumi4829__usr_lucia_10_f3w": {
+      "id": "fr_peer_lumi4829__usr_lucia_10_f3w",
+      "requesterId": "usr_lucia_10_f3w",
+      "receiverId": "peer_lumi4829",
+      "requesterCode": "LUMI-9018",
+      "receiverCode": "LUMI-4829",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_lucia_10_f3w",
+        "friendCode": "LUMI-9018",
+        "username": "@lucia",
+        "name": "Lucia",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793591550505
+      },
+      "receiverProfile": {
+        "id": "peer_lumi4829",
+        "friendCode": "LUMI-4829",
+        "username": "@lumi_4829",
+        "name": "Amigo LUMI-4829",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 120,
+        "streak": 2,
+        "updatedAt": 1793591550505
+      },
+      "chatMessages": [],
+      "updatedAt": 1793591734225
     }
   },
   "rooms": {},

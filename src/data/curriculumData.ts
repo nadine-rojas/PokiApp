@@ -1,6 +1,10 @@
 import { AgeGroup, CourseSubject } from '../utils/educationLogic';
+import {
+  CourseUnitMetadata,
+  expandCoursesTo100LessonsPerSubject,
+} from './curriculumGenerator';
 
-export type { CourseSubject };
+export type { CourseSubject, CourseUnitMetadata };
 
 export type ExerciseType =
   | 'multiple_choice'
@@ -18,6 +22,8 @@ export interface LessonExercise {
   audioText?: string;
   options?: string[];
   correctAnswer?: string;
+  correctIndex?: number;
+  explanation?: string;
   hint: string;
   targetNotes?: string[];
   chessPuzzle?: {
@@ -41,6 +47,10 @@ export interface LessonItem {
   title: string;
   description: string;
   levelNumber: number;
+  unitNumber?: number;
+  unitTitle?: string;
+  lessonInUnit?: number;
+  theorySummary?: string;
   xpReward: number;
   durationMinutes: number;
   exercises: LessonExercise[];
@@ -53,6 +63,7 @@ export interface Course {
   title: string;
   subtitle: string;
   accentColor: string;
+  units?: CourseUnitMetadata[];
   lessons: LessonItem[];
 }
 
@@ -1086,7 +1097,7 @@ export const CHESS_ACADEMY_LESSONS: ChessLessonInteractive[] = [
 // ========================================================
 // CURSOS COMPLETOS SEPARADOS POR CADA GRUPO DE EDAD
 // ========================================================
-export const COURSES_DATA: Course[] = [
+const RAW_COURSES_DATA: Course[] = [
   // ==========================================
   // GRUPO 1: 3 a 6 años (Aprender a leer, Ajedrez básico, Oración sencilla)
   // ==========================================
@@ -2286,6 +2297,9 @@ export const COURSES_DATA: Course[] = [
     ],
   },
 ];
+
+export const COURSES_DATA: Course[] =
+  expandCoursesTo100LessonsPerSubject(RAW_COURSES_DATA);
 
 export const STORYBOOKS_DATA: StoryBook[] = [
   // ========================================================

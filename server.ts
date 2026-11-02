@@ -22,6 +22,8 @@ export interface PublicPeerProfile {
 export interface NetworkChatMessage {
   id: string;
   senderId: string;
+  receiverId?: string;
+  privateRoomId?: string;
   senderName: string;
   text: string;
   timestamp: string;
@@ -196,22 +198,17 @@ async function startServer() {
 
     db.profiles[cleanProfile.id] = cleanProfile;
 
-    // Also reconcile any placeholder friendships that were addressed to this friendCode or username/name
+    // Reconcile ONLY placeholder friendships (`peer_*`) that were addressed specifically to this user's friendCode
+    // Never overwrite a real existing friendship belonging to another user.
     Object.values(db.friendships).forEach((fr) => {
+      const isPlaceholderReceiver = fr.receiverId.startsWith('peer_');
       const matchesReceiverCode =
         fr.receiverCode.toUpperCase() === normalizedCode.toUpperCase();
-      const matchesReceiverName =
-        fr.receiverProfile.ageGroup === cleanProfile.ageGroup &&
-        (fr.receiverProfile.username.toLowerCase() ===
-          cleanProfile.username.toLowerCase() ||
-          fr.receiverProfile.name.toLowerCase() ===
-            cleanProfile.name.toLowerCase());
 
       if (
         fr.requesterId !== cleanProfile.id &&
         (fr.receiverId === cleanProfile.id ||
-          matchesReceiverCode ||
-          matchesReceiverName)
+          (isPlaceholderReceiver && matchesReceiverCode))
       ) {
         fr.receiverId = cleanProfile.id;
         fr.receiverCode = cleanProfile.friendCode;
@@ -480,26 +477,32 @@ async function startServer() {
     res.json({ ok: true, state: db });
   });
 
-  // REST API: Send a chat message between friends across browsers
+  // REST API: Send a private 1-to-1 chat message between friends across browsers (strictly isolated by privateRoomId)
   app.post('/api/network/chat-message', (req, res) => {
     const {
       friendshipId,
       senderId,
+      receiverId,
+      privateRoomId,
       senderName,
       text,
       attachmentType,
       attachmentId,
       attachmentUrl,
       attachmentTitle,
+      chessMatchId,
     } = req.body as {
       friendshipId: string;
       senderId: string;
+      receiverId?: string;
+      privateRoomId?: string;
       senderName: string;
       text: string;
-      attachmentType?: 'gif' | 'drawing';
+      attachmentType?: 'gif' | 'drawing' | 'chess_invite';
       attachmentId?: string;
       attachmentUrl?: string;
       attachmentTitle?: string;
+      chessMatchId?: string;
     };
 
     const existing = db.friendships[friendshipId];
@@ -508,9 +511,40 @@ async function startServer() {
       return;
     }
 
+    // Verify that senderId is strictly one of the two participants of this private friendship
+    if (
+      existing.requesterId !== senderId &&
+      existing.receiverId !== senderId
+    ) {
+      res.status(403).json({
+        ok: false,
+        error: 'Sender does not belong to this private friendship room',
+      });
+      return;
+    }
+
+    const resolvedReceiverId =
+      receiverId ||
+      (existing.requesterId === senderId
+        ? existing.receiverId
+        : existing.requesterId);
+    const canonicalPrivateRoomId = [senderId, resolvedReceiverId]
+      .sort()
+      .join('_');
+
+    if (privateRoomId && privateRoomId !== canonicalPrivateRoomId) {
+      res.status(403).json({
+        ok: false,
+        error: 'privateRoomId mismatch for private 1-on-1 conversation',
+      });
+      return;
+    }
+
     const msg: NetworkChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       senderId,
+      receiverId: resolvedReceiverId,
+      privateRoomId: canonicalPrivateRoomId,
       senderName,
       text,
       timestamp: new Date().toLocaleTimeString('es-ES', {
@@ -521,6 +555,7 @@ async function startServer() {
       attachmentId,
       attachmentUrl,
       attachmentTitle,
+      chessMatchId,
     };
 
     existing.chatMessages.push(msg);

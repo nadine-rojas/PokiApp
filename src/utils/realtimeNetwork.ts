@@ -3,6 +3,8 @@ import {
   AgeGroup,
   UserProfile,
   generateFriendCode,
+  getPrivateChatRoomId,
+  filterPrivateRoomMessages,
   normalizeFriendCode,
 } from './educationLogic';
 
@@ -22,6 +24,8 @@ export interface PublicPeerProfile {
 export interface NetworkChatMessage {
   id: string;
   senderId: string;
+  receiverId?: string;
+  privateRoomId?: string;
   senderName: string;
   text: string;
   timestamp: string;
@@ -244,7 +248,15 @@ class RealtimeNetworkClient {
         if (!fr || !fr.id) return;
         const current = this.state.friendships[fr.id];
         if (!current || (fr.updatedAt || 0) >= (current.updatedAt || 0)) {
-          this.state.friendships[fr.id] = fr;
+          const isolatedMessages = filterPrivateRoomMessages(
+            fr.chatMessages || [],
+            fr.requesterId,
+            fr.receiverId
+          );
+          this.state.friendships[fr.id] = {
+            ...fr,
+            chatMessages: isolatedMessages,
+          };
           changed = true;
         }
       });
@@ -604,13 +616,27 @@ class RealtimeNetworkClient {
       attachmentTitle?: string;
       attachmentUrl?: string;
       chessMatchId?: string;
-    }
+    },
+    explicitReceiverId?: string
   ): Promise<void> {
     this.init();
     const existing = this.state.friendships[friendshipId];
+    const resolvedReceiverId =
+      explicitReceiverId ||
+      (existing
+        ? existing.requesterId === senderId
+          ? existing.receiverId
+          : existing.requesterId
+        : '');
+    const privateRoomId = resolvedReceiverId
+      ? getPrivateChatRoomId(senderId, resolvedReceiverId)
+      : undefined;
+
     const msg: NetworkChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       senderId,
+      receiverId: resolvedReceiverId || undefined,
+      privateRoomId,
       senderName,
       text,
       timestamp: new Date().toLocaleTimeString('es-ES', {
@@ -623,11 +649,18 @@ class RealtimeNetworkClient {
     if (existing) {
       const updated: NetworkFriendshipRecord = {
         ...existing,
-        chatMessages: [...existing.chatMessages, msg],
+        chatMessages: filterPrivateRoomMessages(
+          [...existing.chatMessages, msg],
+          existing.requesterId,
+          existing.receiverId
+        ),
         updatedAt: Date.now(),
       };
       this.mergeState({ friendships: { [friendshipId]: updated } });
       this.publishMqtt(`friendships/${friendshipId}`, updated, true);
+      if (privateRoomId) {
+        this.publishMqtt(`chat/${privateRoomId}`, msg, false);
+      }
       this.broadcastLocal();
     }
 
@@ -638,6 +671,8 @@ class RealtimeNetworkClient {
         body: JSON.stringify({
           friendshipId,
           senderId,
+          receiverId: resolvedReceiverId || undefined,
+          privateRoomId,
           senderName,
           text,
           ...(attachment || {}),
