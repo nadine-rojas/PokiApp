@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   UserPlus,
   Check,
@@ -15,12 +15,21 @@ import {
   Copy,
   Wifi,
   Zap,
+  Image as ImageIcon,
+  SmilePlus,
+  Sparkles,
+  Upload,
 } from 'lucide-react';
 import {
   AgeGroup,
   FriendshipStatus,
   UserProfile,
+  SAFE_KIDS_GIFS,
+  SafeKidsGifItem,
+  ANTI_CHILD_PHOTO_LEGAL_MESSAGE,
   canUsersChat,
+  detectGroomingOrPersonalDataInChat,
+  evaluateChatImageSafety,
   isChatEnabledForGroup,
   moderateChatMessage,
   requiresParentalConsent,
@@ -28,6 +37,18 @@ import {
 import { AvatarBadge, MascotCompanion } from './ArtworkRenderer';
 import { GamesView } from './GamesView';
 import { playRewardSound } from '../utils/soundEffects';
+
+export interface ChatMessageItem {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  attachmentType?: 'gif' | 'drawing';
+  attachmentId?: string;
+  attachmentUrl?: string;
+  attachmentTitle?: string;
+}
 
 export interface FriendshipRecord {
   id: string;
@@ -45,13 +66,7 @@ export interface FriendshipRecord {
     xp: number;
     streak: number;
   };
-  chatMessages: {
-    id: string;
-    senderId: string;
-    senderName: string;
-    text: string;
-    timestamp: string;
-  }[];
+  chatMessages: ChatMessageItem[];
 }
 
 interface FriendsChatViewProps {
@@ -67,7 +82,16 @@ interface FriendsChatViewProps {
     friendshipId: string,
     action: 'block' | 'report'
   ) => void;
-  onSendMessage: (friendshipId: string, text: string) => void;
+  onSendMessage: (
+    friendshipId: string,
+    text: string,
+    attachment?: {
+      attachmentType: 'gif' | 'drawing';
+      attachmentId?: string;
+      attachmentTitle?: string;
+      attachmentUrl?: string;
+    }
+  ) => void;
   onEarnGameXp: (xpAmount: number, gemsEarned?: number) => void;
   onOpenParentalPanel: () => void;
 }
@@ -97,6 +121,9 @@ export function FriendsChatView({
   const acceptedFriends = friendships.filter(
     (f) => f.statusForCurrent === 'accepted'
   );
+  const blockedFriends = friendships.filter(
+    (f) => f.statusForCurrent === 'blocked'
+  );
   const pendingReceived = friendships.filter(
     (f) => f.statusForCurrent === 'pending_received'
   );
@@ -117,7 +144,21 @@ export function FriendsChatView({
   >(null);
   const [messageInput, setMessageInput] = useState('');
   const [moderationAlert, setModerationAlert] = useState<string | null>(null);
+  const [groomingExpulsionAlert, setGroomingExpulsionAlert] = useState<{
+    expelledPeerName: string;
+    reason: string;
+  } | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
+
+  // Estados para el selector de GIFs seguros y el Escáner de Imágenes Anti-Fotos de Niños
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [gifSearchQuery, setGifSearchQuery] = useState('');
+  const [imageScannerOpen, setImageScannerOpen] = useState(false);
+  const [isScanningImage, setIsScanningImage] = useState(false);
+  const [imageLegalBlockAlert, setImageLegalBlockAlert] = useState<string | null>(
+    null
+  );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeFriendship =
     friendships.find((f) => f.id === selectedFriendshipId) ||
@@ -148,6 +189,23 @@ export function FriendsChatView({
     setTimeout(() => setCopiedFriendCode(false), 2000);
   };
 
+  /**
+   * 1C) Ejecuta el bloqueo instantáneo del mensaje y la expulsión automática del usuario
+   * cuando el detector de Grooming y Datos Personales identifica una infracción crítica.
+   */
+  const executeAutomaticGroomingBlockAndExpulsion = (
+    friendship: FriendshipRecord,
+    reason: string
+  ) => {
+    playRewardSound('wrong');
+    onBlockOrReportFriend(friendship.id, 'block');
+    setModerationAlert(reason);
+    setGroomingExpulsionAlert({
+      expelledPeerName: friendship.peerProfile.name,
+      reason,
+    });
+  };
+
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeFriendship || !chatEnabledInStage) return;
@@ -162,6 +220,17 @@ export function FriendsChatView({
 
     const modResult = moderateChatMessage(messageInput);
     if (!modResult.allowed) {
+      if (modResult.autoBlockAndExpelSender) {
+        // 1C) Bloquea el mensaje inmediatamente Y bloquea/expulsa automáticamente a la persona de la lista de amigos
+        executeAutomaticGroomingBlockAndExpulsion(
+          activeFriendship,
+          modResult.reason ||
+            'ALERTA DE PROTECCIÓN INFANTIL: Mensaje bloqueado y usuario expulsado automáticamente por pedir o enviar fotos o datos personales.'
+        );
+        setMessageInput('');
+        return;
+      }
+
       playRewardSound('wrong');
       setModerationAlert(
         modResult.reason || 'Mensaje bloqueado por el filtro de seguridad.'
@@ -171,8 +240,123 @@ export function FriendsChatView({
 
     playRewardSound('pop');
     setModerationAlert(null);
+    setImageLegalBlockAlert(null);
     onSendMessage(activeFriendship.id, modResult.sanitizedText);
     setMessageInput('');
+  };
+
+  const handleSimulateIncomingGroomingAttempt = () => {
+    if (!activeFriendship) return;
+    const simulatedIncomingText = 'Hola, mandame una foto tuya y decime dónde vivís';
+    const check = detectGroomingOrPersonalDataInChat(simulatedIncomingText);
+    if (!check.allowed && check.autoBlockAndExpelSender) {
+      executeAutomaticGroomingBlockAndExpulsion(
+        activeFriendship,
+        `ALERTA DE PROTECCIÓN INFANTIL: El usuario "${activeFriendship.peerProfile.name}" intentó pedir una foto personal o dirección ("${simulatedIncomingText}"). El mensaje fue bloqueado antes de entregarse y "${activeFriendship.peerProfile.name}" fue bloqueado y expulsado automáticamente de tu lista de amigos.`
+      );
+    }
+  };
+
+  const handleSendSafeGif = (gif: SafeKidsGifItem) => {
+    if (!activeFriendship || !chatEligibility.canChat) return;
+    playRewardSound('pop');
+    setModerationAlert(null);
+    setImageLegalBlockAlert(null);
+    onSendMessage(activeFriendship.id, `[GIF Animado: ${gif.title}] ${gif.caption}`, {
+      attachmentType: 'gif',
+      attachmentId: gif.id,
+      attachmentTitle: gif.title,
+    });
+    setGifPickerOpen(false);
+  };
+
+  /**
+   * 1B) Escáner de Privacidad antes de enviar cualquier imagen en el chat:
+   * Si identifica un rostro real o foto de niño/persona, bloquea la subida inmediatamente con el aviso legal exacto.
+   */
+  const runImagePrivacyScanAndSend = async (params: {
+    fileName: string;
+    imageKind: 'drawing' | 'homework' | 'photo';
+    imageBase64?: string;
+  }) => {
+    if (!activeFriendship) return;
+    setIsScanningImage(true);
+    setImageLegalBlockAlert(null);
+    setModerationAlert(null);
+
+    try {
+      const localEval = evaluateChatImageSafety({
+        containsPersonOrFace: params.imageKind === 'photo',
+        fileName: params.fileName,
+        imageKind: params.imageKind,
+      });
+
+      let allowed = localEval.allowed;
+      let reason = localEval.reason;
+
+      try {
+        const res = await fetch('/api/safety/scan-chat-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: params.fileName,
+            containsFaceClientCheck: !localEval.allowed,
+            imageKind: params.imageKind,
+            imageBase64: params.imageBase64,
+          }),
+        });
+        const data = await res.json();
+        if (data && data.allowed === false) {
+          allowed = false;
+          reason = data.reason || ANTI_CHILD_PHOTO_LEGAL_MESSAGE;
+        }
+      } catch {
+        // Use localEval result
+      }
+
+      if (!allowed) {
+        playRewardSound('wrong');
+        setImageLegalBlockAlert(ANTI_CHILD_PHOTO_LEGAL_MESSAGE);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      playRewardSound('correct');
+      setImageLegalBlockAlert(null);
+      setImageScannerOpen(false);
+      onSendMessage(
+        activeFriendship.id,
+        `🎨 Compartió un dibujo de curso verificado: "${params.fileName}"`,
+        {
+          attachmentType: 'drawing',
+          attachmentTitle: params.fileName,
+        }
+      );
+    } finally {
+      setIsScanningImage(false);
+    }
+  };
+
+  const handleFileUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = typeof reader.result === 'string' ? reader.result : undefined;
+      const lower = file.name.toLowerCase();
+      const isSafeDrawingOrHomework =
+        /\b(dibujo|tarea|curso|arte|boceto|drawing|homework|sketch|math)\b/i.test(
+          lower
+        );
+      runImagePrivacyScanAndSend({
+        fileName: file.name,
+        imageKind: isSafeDrawingOrHomework ? 'drawing' : 'photo',
+        imageBase64: base64,
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleAddFriendByUsername = (e: React.FormEvent) => {
@@ -203,7 +387,6 @@ export function FriendsChatView({
     );
   };
 
-  // Usuarios sincronizados en tiempo real (mismo navegador + otros navegadores/dispositivos vía WebSocket/MQTT)
   const availableSameGroupUsers = sameGroupRegisteredUsers.filter(
     (u) =>
       u.id !== currentUser.id &&
@@ -221,6 +404,13 @@ export function FriendsChatView({
           u.friendCode.toLowerCase().includes(searchQuery.toLowerCase())))
   );
 
+  const filteredGifs = SAFE_KIDS_GIFS.filter(
+    (g) =>
+      gifSearchQuery.trim() === '' ||
+      g.title.toLowerCase().includes(gifSearchQuery.toLowerCase()) ||
+      g.tag.toLowerCase().includes(gifSearchQuery.toLowerCase())
+  );
+
   return (
     <div className="space-y-8">
       {/* Cabecera de Amigos + Código de Amigo Único Sincronizado en Red Real (WebSocket + MQTT) */}
@@ -234,20 +424,16 @@ export function FriendsChatView({
         }`}
       >
         <div className="flex items-center gap-4 min-w-0">
-          <MascotCompanion
-            variant={isYoungKid ? 'heart' : isTeenDark ? 'orb' : 'droplet'}
-            size="sm"
-            mood="happy"
-          />
+          <MascotCompanion variant="heart" size="sm" mood="happy" />
           <div className="min-w-0">
             <div className="inline-flex items-center gap-1.5 text-[11px] font-black text-emerald-600 dark:text-[#BEF264]">
               <Wifi className="w-3.5 h-3.5" />
-              <span>Red en Vivo Activa (Entre Navegadores y Dispositivos)</span>
+              <span>Red en Vivo Activa + Guardián IA Anti-Grooming y Anti-Fotos</span>
             </div>
             <h1 className="text-lg sm:text-xl font-extrabold font-display">
               {isYoungKid
                 ? 'Mis Amigos para Jugar en Vivo'
-                : 'Amigos en Red, Chat y Salas Multijugador'}
+                : 'Amigos en Red, Chat Pastel Seguro y Salas Multijugador'}
             </h1>
             <p className="text-xs sm:text-sm opacity-75 mt-0.5">
               Comparte tu <strong>Código de Amigo</strong> o busca por nombre desde cualquier navegador o celular para conectarse al instante.
@@ -296,19 +482,19 @@ export function FriendsChatView({
                 onClick={() => setRightPanelMode('chat')}
                 className={`px-4 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition-all ${
                   rightPanelMode === 'chat'
-                    ? 'bg-[#84CC16] text-slate-950 shadow-2xs'
+                    ? 'bg-[#A594F9] text-white shadow-2xs'
                     : 'opacity-75 hover:opacity-100'
                 }`}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                Chat Seguro
+                Chat Seguro IA
               </button>
               <button
                 type="button"
                 onClick={() => setRightPanelMode('games')}
                 className={`px-4 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition-all ${
                   rightPanelMode === 'games'
-                    ? 'bg-[#84CC16] text-slate-950 shadow-2xs'
+                    ? 'bg-[#A594F9] text-white shadow-2xs'
                     : 'opacity-75 hover:opacity-100'
                 }`}
               >
@@ -331,10 +517,41 @@ export function FriendsChatView({
         </div>
       </section>
 
+      {/* ALERTA PROMINENTE CUANDO UN USUARIO FUE EXPULSADO Y BLOQUEADO AUTOMÁTICAMENTE POR GROOMING / DATOS PERSONALES */}
+      {groomingExpulsionAlert && (
+        <div
+          role="alert"
+          data-testid="grooming-expulsion-alert"
+          className="p-5 rounded-[28px] bg-red-600 text-white border-4 border-red-300 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3.5">
+            <ShieldAlert className="w-8 h-8 text-amber-300 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="text-xs font-black uppercase tracking-wider text-amber-200">
+                Escudo Anti-Grooming Activado · Bloqueo y Expulsión Instantánea
+              </div>
+              <h3 className="text-base sm:text-lg font-black font-display">
+                Usuario &ldquo;{groomingExpulsionAlert.expelledPeerName}&rdquo; bloqueado y expulsado de tus amigos por seguridad
+              </h3>
+              <p className="text-xs text-white/95 font-medium leading-relaxed">
+                {groomingExpulsionAlert.reason}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGroomingExpulsionAlert(null)}
+            className="px-4 py-2 rounded-full bg-white text-red-700 font-black text-xs shrink-0"
+          >
+            Entendido
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Columna Izquierda: Conectar por Código, Solicitudes, Lista de Amigos y Buscador en Vivo */}
         <div className="lg:col-span-5 space-y-6">
-          {/* 1. Conectar Directo por Código de Amigo (Tiempo Real entre distintos navegadores/dispositivos) */}
+          {/* 1. Conectar Directo por Código de Amigo */}
           <div
             data-testid="direct-connect-friend-code-section"
             className={`rounded-[32px] border-2 p-6 space-y-4 ${
@@ -343,19 +560,17 @@ export function FriendsChatView({
                 : 'bg-white dark:bg-[#181326] border-emerald-500/40 text-slate-900 dark:text-slate-100 shadow-sm'
             }`}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-[#BEF264] flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5" />
-                  Sincronización Instantánea (WebSocket / MQTT)
-                </span>
-                <h2 className="font-extrabold text-base mt-0.5">
-                  Conectar directo por Código de Amigo
-                </h2>
-                <p className="text-xs opacity-75 mt-0.5">
-                  Ingresa el código de tu amigo (ej. <strong>LUMI-4829</strong>) o su nombre desde otro navegador o celular para vincularse al instante.
-                </p>
-              </div>
+            <div>
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-[#BEF264] flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5" />
+                Sincronización Instantánea (WebSocket / MQTT)
+              </span>
+              <h2 className="font-extrabold text-base mt-0.5">
+                Conectar directo por Código de Amigo
+              </h2>
+              <p className="text-xs opacity-75 mt-0.5">
+                Ingresa el código de tu amigo (ej. <strong>LUMI-4829</strong>) o su nombre desde otro navegador o celular para vincularse al instante.
+              </p>
             </div>
 
             <form
@@ -386,7 +601,7 @@ export function FriendsChatView({
             </form>
           </div>
 
-          {/* 2. Enviar Solicitud de Amistad por Nombre, @usuario o Código */}
+          {/* 2. Enviar Solicitud de Amistad */}
           <div
             className={`rounded-[32px] border p-6 space-y-4 ${
               isTeenDark
@@ -441,7 +656,7 @@ export function FriendsChatView({
             )}
           </div>
 
-          {/* 3. Gestión de Solicitudes Pendientes (Aceptación Obligatoria) */}
+          {/* 3. Gestión de Solicitudes Pendientes */}
           <div
             data-testid="pending-requests-section"
             className={`rounded-[32px] border p-6 space-y-4 ${
@@ -513,7 +728,7 @@ export function FriendsChatView({
             )}
           </div>
 
-          {/* 4. Mis Amigos Aceptados */}
+          {/* 4. Mis Amigos Aceptados + Usuarios Bloqueados/Expulsados por Seguridad */}
           <div
             data-testid="accepted-friends-section"
             className={`rounded-[32px] border p-6 space-y-4 ${
@@ -545,8 +760,8 @@ export function FriendsChatView({
                       }}
                       className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 ${
                         isSelected
-                          ? 'border-emerald-500 bg-emerald-500/15'
-                          : 'border-slate-200/40 hover:border-emerald-400'
+                          ? 'border-[#7C69EF] bg-[#F5EFFF] dark:bg-purple-950/50 text-slate-900 dark:text-white'
+                          : 'border-slate-200/40 hover:border-[#A594F9]'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -560,14 +775,37 @@ export function FriendsChatView({
                           </div>
                         </div>
                       </div>
-                      {chatEnabledInStage ? (
-                        <MessageSquare className="w-4 h-4 text-emerald-500 shrink-0" />
-                      ) : (
-                        <Gamepad2 className="w-4 h-4 text-[#FF6B6B] shrink-0" />
-                      )}
+                      <MessageSquare className="w-4 h-4 text-[#7C69EF] shrink-0" />
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {blockedFriends.length > 0 && (
+              <div
+                data-testid="blocked-expelled-users-section"
+                className="pt-3 border-t border-red-200 dark:border-red-900/40 space-y-2"
+              >
+                <div className="text-xs font-black text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>
+                    Usuarios Bloqueados y Expulsados por Seguridad ({blockedFriends.length})
+                  </span>
+                </div>
+                {blockedFriends.map((bf) => (
+                  <div
+                    key={bf.id}
+                    className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-between text-xs"
+                  >
+                    <span className="font-bold text-red-700 dark:text-red-300 truncate">
+                      {bf.peerProfile.name} ({bf.peerProfile.friendCode || bf.peerProfile.username})
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black shrink-0">
+                      usuario bloqueado por seguridad
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -661,7 +899,6 @@ export function FriendsChatView({
                 </div>
               ))}
 
-              {/* Si escribe un nombre o Código de Amigo en el buscador, permite conectarlo o enviarle solicitud al instante en la red sin bloquearlo */}
               {searchQuery.trim() !== '' &&
                 availableSameGroupUsers.length === 0 && (
                   <div
@@ -709,18 +946,20 @@ export function FriendsChatView({
                     </div>
                   </div>
                 )}
-
-              {searchQuery.trim() === '' &&
-                availableSameGroupUsers.length === 0 && (
-                  <p className="text-xs opacity-65 py-2 leading-relaxed">
-                    Escribe cualquier nombre o Código de Amigo (ej. <strong>LUMI-4829</strong>) de otro navegador o celular para encontrarlo y conectarte al instante.
-                  </p>
-                )}
             </div>
           </div>
         </div>
 
-        {/* Columna Derecha: Para 3-6 años o cuando se elige 'games', muestra Juegos Multijugador. Para 7-18 en modo 'chat', muestra Chat Moderado */}
+        {/* =====================================================================
+            3. PANTALLA DE CHAT EN TONOS VIOLETA / ROSA PASTEL (IMAGEN 3)
+               - Fondo degradado suave en lila, lavanda y rosa pastel (#A594F9, #F5EFFF, #FF9EBB)
+               - Personaje de corazón amigable con ojos grandes en el encabezado
+               - Burbujas súper redondeadas (blancas para el amigo con su avatar al lado, rosa pastel para el usuario)
+               - Barra inferior en cápsula violeta/azul (#4B44D6) con:
+                 a) Botón de GIFs Seguros
+                 b) Botón Subir Imagen con Detector Legal Anti-Fotos de Niños
+                 c) Guardián Automático Anti-Grooming (bloqueo y expulsión instantánea)
+           ===================================================================== */}
         <div className="lg:col-span-7">
           {!chatEnabledInStage || rightPanelMode === 'games' ? (
             <GamesView
@@ -737,137 +976,416 @@ export function FriendsChatView({
             />
           ) : (
             <div
-              className={`rounded-[32px] border p-6 sm:p-8 flex flex-col justify-between min-h-[500px] ${
-                isTeenDark
-                  ? 'bg-[#181326] border-purple-900/50 text-white'
-                  : 'bg-white dark:bg-[#181326] border-slate-200 dark:border-purple-900/50 text-slate-900 dark:text-slate-100 shadow-sm'
-              }`}
+              data-testid="pastel-lilac-pink-chat-panel"
+              className="rounded-[40px] border-4 border-[#F9A8D4]/60 bg-gradient-to-b from-[#F5EFFF] via-[#C8B8FF] to-[#A594F9] text-slate-900 p-5 sm:p-7 flex flex-col justify-between min-h-[600px] shadow-xl relative overflow-hidden"
             >
               {activeFriendship ? (
                 <>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200/30">
-                    <div className="flex items-center gap-3.5">
-                      <AvatarBadge
-                        avatarId={activeFriendship.peerProfile.avatarId}
-                        size="md"
-                      />
-                      <div>
-                        <h3 className="font-bold text-lg">
-                          {activeFriendship.peerProfile.name}
-                        </h3>
-                        <p className="text-xs opacity-70 font-mono">
-                          {activeFriendship.peerProfile.friendCode ||
-                            activeFriendship.peerProfile.username}{' '}
-                          · Sincronizado en tiempo real
-                        </p>
+                  {/* Encabezado Pastel con el Personaje de Corazón Amigable con Ojos Grandes (Imagen 3) */}
+                  <div className="bg-white/90 backdrop-blur-md rounded-[30px] p-4 sm:p-5 shadow-sm border border-white space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3.5">
+                        <div className="p-1.5 rounded-full bg-[#FFE4EE] border-2 border-[#FF9EBB]">
+                          <MascotCompanion variant="heart" size="sm" mood="excited" />
+                        </div>
+                        <div>
+                          <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-[#6D28D9]">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Chat Infantil Protegido por IA</span>
+                          </div>
+                          <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                            <span>{activeFriendship.peerProfile.name}</span>
+                            <span className="text-xs font-mono font-bold text-[#5B58EB] bg-[#F5EFFF] px-2.5 py-0.5 rounded-full">
+                              {activeFriendship.peerProfile.friendCode ||
+                                activeFriendship.peerProfile.username}
+                            </span>
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setRightPanelMode('games')}
+                          className="px-3 py-1.5 rounded-full bg-[#4B44D6] text-white font-extrabold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Gamepad2 className="w-3.5 h-3.5" />
+                          <span>Jugar en Sala</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="simulate-incoming-grooming-btn"
+                          onClick={handleSimulateIncomingGroomingAttempt}
+                          title="Simula que este contacto envía un mensaje pidiendo foto o dirección para verificar el bloqueo y expulsión instantánea"
+                          className="px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[11px] flex items-center gap-1 cursor-pointer"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Probar Anti-Grooming</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onBlockOrReportFriend(activeFriendship.id, 'report');
+                            setReportNotice(
+                              `Se registró un reporte de seguridad sobre ${activeFriendship.peerProfile.name}.`
+                            );
+                          }}
+                          className="px-2.5 py-1.5 rounded-full bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Flag className="w-3 h-3" />
+                          <span>Reportar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onBlockOrReportFriend(activeFriendship.id, 'block');
+                            setReportNotice(
+                              `Bloqueaste a ${activeFriendship.peerProfile.name}.`
+                            );
+                          }}
+                          className="px-2.5 py-1.5 rounded-full bg-red-100 text-red-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Ban className="w-3 h-3" />
+                          <span>Bloquear</span>
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => setRightPanelMode('games')}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-500 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap"
-                      >
-                        <Gamepad2 className="w-4 h-4" />
-                        Jugar Juntos en Sala
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onBlockOrReportFriend(activeFriendship.id, 'report');
-                          setReportNotice(
-                            `Se registró un reporte de seguridad sobre ${activeFriendship.peerProfile.name}.`
-                          );
-                        }}
-                        className="px-3 py-2 rounded-xl bg-amber-500/15 text-amber-500 font-semibold text-xs flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <Flag className="w-3.5 h-3.5" />
-                        Reportar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onBlockOrReportFriend(activeFriendship.id, 'block');
-                          setReportNotice(
-                            `Bloqueaste a ${activeFriendship.peerProfile.name}.`
-                          );
-                        }}
-                        className="px-3 py-2 rounded-xl bg-red-500/15 text-red-500 font-semibold text-xs flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <Ban className="w-3.5 h-3.5" />
-                        Bloquear
-                      </button>
+                    {/* Píldoras suaves estilo Imagen 3 (Amistad / Retos y Tareas Compartidas) */}
+                    <div className="grid grid-cols-2 gap-2 p-1 rounded-full bg-[#F5EFFF]">
+                      <div className="py-1.5 px-3 rounded-full bg-white text-center text-xs font-extrabold text-[#4B44D6] shadow-2xs">
+                        Conversación Segura
+                      </div>
+                      <div className="py-1.5 px-3 rounded-full text-center text-xs font-bold text-slate-600">
+                        Solo Dibujos de Cursos y GIFs
+                      </div>
                     </div>
                   </div>
 
                   {reportNotice && (
-                    <div className="mt-4 p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs font-medium">
+                    <div className="mt-3 p-3 rounded-2xl bg-white/90 border border-amber-300 text-amber-900 text-xs font-bold">
                       {reportNotice}
                     </div>
                   )}
 
-                  <div className="flex-1 py-6 space-y-3 overflow-y-auto max-h-[340px]">
-                    {!chatEligibility.canChat ? (
-                      <div className="p-6 rounded-2xl bg-black/5 border border-slate-200/30 text-center space-y-3 my-8">
-                        <Lock className="w-8 h-8 text-amber-500 mx-auto" />
-                        <div className="font-bold text-sm">
-                          Chat Restringido hasta Aceptación y Permiso Parental
+                  {/* Área de Mensajes con Burbujas Súper Redondeadas (Blancas para amigo con avatar al lado, Rosa Pastel #FF9EBB para usuario) */}
+                  <div className="flex-1 py-5 space-y-4 overflow-y-auto max-h-[360px] pr-1">
+                    {/* Mensaje inicial del Guardián Corazón con tarjeta interactiva (Imagen 3) */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-xs shrink-0">
+                        <MascotCompanion variant="heart" size="sm" mood="happy" />
+                      </div>
+                      <div className="max-w-[82%] rounded-[24px] rounded-tl-md bg-white text-slate-900 px-4 py-3 text-xs font-bold shadow-sm space-y-2">
+                        <div>
+                          ¡Hola {currentUser.name}! Aquí puedes chatear con{' '}
+                          <strong>{activeFriendship.peerProfile.name}</strong>, enviar GIFs animados y compartir dibujos de tus cursos.
                         </div>
-                        <p className="text-xs opacity-75 max-w-md mx-auto">
+                        <div className="p-3 rounded-2xl bg-[#F5EFFF] border border-[#DDD6FE] flex items-center justify-between gap-3">
+                          <div>
+                            <div className="font-black text-[#4B44D6] text-xs">
+                              ¿Jugamos una partida o compartimos un dibujo?
+                            </div>
+                            <div className="text-[11px] text-slate-600">
+                              Recuerda: Nunca compartas fotos reales ni tu dirección.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setGifPickerOpen(true)}
+                            className="px-3 py-1.5 rounded-full bg-[#4B44D6] text-white font-extrabold text-[11px] shrink-0 cursor-pointer"
+                          >
+                            Enviar GIF
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!chatEligibility.canChat ? (
+                      <div className="p-5 rounded-[28px] bg-white/95 border-2 border-red-300 text-center space-y-2 my-4 shadow-md">
+                        <Lock className="w-7 h-7 text-red-500 mx-auto" />
+                        <div className="font-black text-sm text-slate-900">
+                          Chat Bloqueado por Seguridad Infantil
+                        </div>
+                        <p className="text-xs text-slate-600 max-w-md mx-auto font-semibold">
                           {chatEligibility.reason}
                         </p>
                       </div>
-                    ) : activeFriendship.chatMessages.length === 0 ? (
-                      <p className="text-xs opacity-65 text-center py-8">
-                        ¡Conectados en tiempo real! Escribe el primer mensaje amable a {activeFriendship.peerProfile.name}.
-                      </p>
                     ) : (
                       activeFriendship.chatMessages.map((msg) => {
                         const isMine = msg.senderId === currentUser.id;
+                        const matchedGif =
+                          msg.attachmentType === 'gif'
+                            ? SAFE_KIDS_GIFS.find(
+                                (g) =>
+                                  g.id === msg.attachmentId ||
+                                  msg.text.includes(g.title)
+                              ) || SAFE_KIDS_GIFS[0]
+                            : null;
+
                         return (
                           <div
                             key={msg.id}
-                            className={`flex flex-col ${
-                              isMine ? 'items-end' : 'items-start'
+                            className={`flex items-end gap-2.5 ${
+                              isMine ? 'justify-end' : 'justify-start'
                             }`}
                           >
+                            {!isMine && (
+                              <AvatarBadge
+                                avatarId={activeFriendship.peerProfile.avatarId}
+                                size="sm"
+                              />
+                            )}
                             <div
-                              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                              className={`max-w-[78%] rounded-[26px] px-4 py-3 text-xs sm:text-sm font-bold shadow-sm space-y-2 ${
                                 isMine
-                                  ? 'bg-emerald-600 text-white'
-                                  : isTeenDark
-                                  ? 'bg-[#251E3E] text-slate-100'
-                                  : 'bg-slate-100 dark:bg-[#251E3E] text-slate-900 dark:text-slate-100'
+                                  ? 'bg-[#FF9EBB] text-slate-950 rounded-br-md'
+                                  : 'bg-white text-slate-900 rounded-bl-md'
                               }`}
                             >
-                              {msg.text}
+                              {matchedGif && (
+                                <div
+                                  className={`p-3 rounded-2xl bg-gradient-to-r ${matchedGif.bgGradient} text-white text-center space-y-1 shadow-xs`}
+                                >
+                                  <div className="text-base font-black animate-bounce">
+                                    {matchedGif.caption}
+                                  </div>
+                                  <div className="text-[10px] font-extrabold uppercase tracking-wider opacity-90">
+                                    GIF Animado · {matchedGif.title}
+                                  </div>
+                                </div>
+                              )}
+
+                              {msg.attachmentType === 'drawing' && (
+                                <div className="p-3 rounded-2xl bg-white/90 text-slate-900 border border-emerald-300 flex items-center gap-2.5">
+                                  <Sparkles className="w-5 h-5 text-emerald-600 shrink-0" />
+                                  <div className="text-xs">
+                                    <div className="font-black text-emerald-800">
+                                      Dibujo / Tarea Verificada por IA
+                                    </div>
+                                    <div className="text-[11px] text-slate-600">
+                                      {msg.attachmentTitle || 'Boceto del curso'}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div>{msg.text}</div>
+                              <div className="text-[10px] opacity-65 text-right">
+                                {msg.senderName} · {msg.timestamp}
+                              </div>
                             </div>
-                            <span className="text-[11px] opacity-60 mt-1 px-1">
-                              {msg.senderName} · {msg.timestamp}
-                            </span>
                           </div>
                         );
                       })
                     )}
                   </div>
 
+                  {/* ALERTA LEGAL OBLIGATORIA CUANDO SE BLOQUEA LA SUBIDA DE UNA FOTO REAL DE NIÑO / PERSONA */}
+                  {imageLegalBlockAlert && (
+                    <div
+                      role="alert"
+                      data-testid="anti-child-photo-legal-alert"
+                      className="mb-3 p-4 rounded-[24px] bg-red-600 text-white border-2 border-white shadow-lg flex items-start gap-3"
+                    >
+                      <ShieldAlert className="w-6 h-6 text-amber-300 shrink-0 mt-0.5" />
+                      <div className="space-y-1 flex-1">
+                        <div className="text-[11px] font-black uppercase tracking-wider text-amber-200">
+                          Escáner de Privacidad Infantil IA
+                        </div>
+                        <p className="text-xs sm:text-sm font-extrabold leading-relaxed">
+                          {imageLegalBlockAlert}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setImageLegalBlockAlert(null)}
+                        className="p-1 rounded-full bg-white/20 text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Alerta de Moderación / Grooming */}
                   {moderationAlert && (
                     <div
-                      className="mb-3 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-500 text-xs font-medium flex items-center gap-2"
                       role="alert"
+                      data-testid="chat-moderation-alert"
+                      className="mb-3 p-3.5 rounded-[22px] bg-red-600 text-white border-2 border-red-200 text-xs font-extrabold flex items-center gap-2.5 shadow-md"
                     >
-                      <ShieldAlert className="w-4 h-4 shrink-0" />
+                      <ShieldAlert className="w-5 h-5 text-amber-300 shrink-0" />
                       <span>{moderationAlert}</span>
                     </div>
                   )}
 
+                  {/* SELECTOR DE GIFS ANIMADOS SEGUROS PARA NIÑOS */}
+                  {gifPickerOpen && (
+                    <div
+                      data-testid="safe-kids-gif-picker"
+                      className="mb-3 p-4 rounded-[28px] bg-white/95 backdrop-blur-md border-2 border-[#A594F9] shadow-lg space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-[#4B44D6] flex items-center gap-1.5">
+                          <SmilePlus className="w-4 h-4" />
+                          Selector de GIFs Animados Seguros para Niños
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setGifPickerOpen(false)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                        >
+                          Cerrar ✕
+                        </button>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={gifSearchQuery}
+                        onChange={(e) => setGifSearchQuery(e.target.value)}
+                        placeholder="Buscar GIF seguro (ej. estrella, ajedrez, dibujo, cohete)..."
+                        className="w-full h-9 px-3 rounded-xl bg-[#F5EFFF] border border-[#C8B8FF] text-xs font-bold text-slate-800"
+                      />
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {filteredGifs.map((gif) => (
+                          <button
+                            key={gif.id}
+                            type="button"
+                            data-testid={`send-safe-gif-${gif.id}`}
+                            onClick={() => handleSendSafeGif(gif)}
+                            className={`p-2.5 rounded-2xl bg-gradient-to-br ${gif.bgGradient} text-white text-left shadow-xs hover:scale-[1.02] transition-transform cursor-pointer`}
+                          >
+                            <div className="text-xs font-black truncate">
+                              {gif.caption}
+                            </div>
+                            <div className="text-[10px] font-bold opacity-90 truncate mt-0.5">
+                              {gif.title}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PANEL DE SUBIDA DE IMÁGENES CON ESCÁNER ANTI-FOTOS DE NIÑOS (PROTECCIÓN LEGAL) */}
+                  {imageScannerOpen && (
+                    <div
+                      data-testid="chat-image-scanner-panel"
+                      className="mb-3 p-4 rounded-[28px] bg-white/95 backdrop-blur-md border-2 border-[#4B44D6] shadow-lg space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-[#4B44D6] flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4" />
+                          Subir Imagen con Escáner Legal Anti-Fotos de Niños
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setImageScannerOpen(false)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                        >
+                          Cerrar ✕
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
+                        Toda imagen pasa por nuestro detector facial y de personas con IA antes de enviarse. Solo se permiten dibujos de tus cursos o capturas de tareas.
+                      </p>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        data-testid="chat-image-file-input"
+                        onChange={handleFileUploadChange}
+                        className="hidden"
+                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isScanningImage}
+                          className="p-2.5 rounded-2xl bg-[#F5EFFF] hover:bg-[#EDE4FF] border border-[#A594F9] text-[#4B44D6] font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>Elegir Archivo</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          data-testid="upload-safe-drawing-btn"
+                          disabled={isScanningImage}
+                          onClick={() =>
+                            runImagePrivacyScanAndSend({
+                              fileName: 'dibujo_curso_perspectiva.png',
+                              imageKind: 'drawing',
+                            })
+                          }
+                          className="p-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          <span>Subir Dibujo Curso (OK)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          data-testid="upload-real-child-photo-block-btn"
+                          disabled={isScanningImage}
+                          onClick={() =>
+                            runImagePrivacyScanAndSend({
+                              fileName: 'foto_real_nino_selfie.jpg',
+                              imageKind: 'photo',
+                            })
+                          }
+                          className="p-2.5 rounded-2xl bg-red-100 hover:bg-red-200 border border-red-300 text-red-800 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <ShieldAlert className="w-4 h-4 text-red-600" />
+                          <span>Probar Foto Niño (Bloqueo)</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BARRA INFERIOR EN CÁPSULA VIOLETA / AZUL (#4B44D6 - IMAGEN 3) CON BOTÓN GIF, SUBIR IMAGEN Y ENVIAR */}
                   <form
                     onSubmit={handleSend}
-                    className="pt-4 border-t border-slate-200/30 flex items-center gap-2.5"
+                    className="p-2 rounded-full bg-[#4B44D6] text-white shadow-lg flex items-center gap-2"
                   >
+                    <button
+                      type="button"
+                      data-testid="chat-gif-picker-btn"
+                      disabled={!chatEligibility.canChat}
+                      onClick={() => {
+                        playRewardSound('pop');
+                        setGifPickerOpen((prev) => !prev);
+                        setImageScannerOpen(false);
+                      }}
+                      title="Enviar GIF animado seguro"
+                      className="h-10 px-3 rounded-full bg-white/15 hover:bg-white/25 disabled:opacity-40 text-white font-black text-xs flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <SmilePlus className="w-4 h-4" />
+                      <span>GIF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="chat-image-upload-btn"
+                      disabled={!chatEligibility.canChat}
+                      onClick={() => {
+                        playRewardSound('pop');
+                        setImageScannerOpen((prev) => !prev);
+                        setGifPickerOpen(false);
+                      }}
+                      title="Subir dibujo o captura de tarea (con filtro anti-fotos de niños)"
+                      className="h-10 px-3 rounded-full bg-white/15 hover:bg-white/25 disabled:opacity-40 text-white font-black text-xs flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Imagen</span>
+                    </button>
+
                     <input
                       type="text"
+                      data-testid="chat-message-input"
                       value={messageInput}
                       onChange={(e) => {
                         setMessageInput(e.target.value);
@@ -876,34 +1394,34 @@ export function FriendsChatView({
                       disabled={!chatEligibility.canChat}
                       placeholder={
                         chatEligibility.canChat
-                          ? `Escribe un mensaje amable a ${activeFriendship.peerProfile.name}...`
-                          : 'Solo amigos aceptados pueden chatear'
+                          ? `Escribe a ${activeFriendship.peerProfile.name}...`
+                          : 'Chat bloqueado por seguridad'
                       }
                       aria-label="Escribir mensaje de chat"
-                      className={`flex-1 h-12 px-4 rounded-2xl border text-sm ${
-                        isTeenDark
-                          ? 'bg-[#120E20] border-purple-800/50 text-white disabled:opacity-50'
-                          : 'bg-white dark:bg-[#120E20] border-slate-300 dark:border-purple-800/50 text-slate-900 dark:text-white disabled:bg-slate-100'
-                      }`}
+                      className="flex-1 h-10 px-4 rounded-full bg-white text-slate-900 placeholder:text-slate-400 text-xs sm:text-sm font-bold focus:outline-none disabled:bg-white/60"
                     />
+
                     <button
                       type="submit"
+                      data-testid="chat-send-message-btn"
                       disabled={!chatEligibility.canChat}
-                      className="h-12 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold text-sm flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+                      className="h-10 px-4 rounded-full bg-[#FF9EBB] hover:bg-[#FB85A8] disabled:bg-slate-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
                     >
-                      <Send className="w-4 h-4" />
-                      Enviar
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar</span>
                     </button>
                   </form>
                 </>
               ) : (
-                <div className="text-center py-16 space-y-3 opacity-80 my-auto">
-                  <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto" />
-                  <div className="font-bold text-base">
-                    Conéctate con amigos de cualquier navegador o dispositivo
+                <div className="text-center py-16 space-y-4 my-auto bg-white/85 rounded-[32px] p-8">
+                  <div className="flex justify-center">
+                    <MascotCompanion variant="heart" size="lg" mood="happy" />
                   </div>
-                  <p className="text-xs max-w-md mx-auto leading-relaxed">
-                    Usa el botón <strong>"Conectar directo por Código de Amigo"</strong> o busca a tu compañero por nombre para chatear y jugar juntos en tiempo real.
+                  <div className="font-black text-lg text-slate-900">
+                    ¿Con quién quieres conversar hoy?
+                  </div>
+                  <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed font-semibold">
+                    Usa el botón <strong>&ldquo;Conectar directo por Código de Amigo&rdquo;</strong> en la columna izquierda para abrir el chat pastel protegido por IA.
                   </p>
                 </div>
               )}

@@ -25,6 +25,10 @@ export interface NetworkChatMessage {
   senderName: string;
   text: string;
   timestamp: string;
+  attachmentType?: 'gif' | 'drawing';
+  attachmentId?: string;
+  attachmentTitle?: string;
+  attachmentUrl?: string;
 }
 
 export interface NetworkFriendshipRecord {
@@ -542,7 +546,13 @@ class RealtimeNetworkClient {
     friendshipId: string,
     senderId: string,
     senderName: string,
-    text: string
+    text: string,
+    attachment?: {
+      attachmentType: 'gif' | 'drawing';
+      attachmentId?: string;
+      attachmentTitle?: string;
+      attachmentUrl?: string;
+    }
   ): Promise<void> {
     this.init();
     const existing = this.state.friendships[friendshipId];
@@ -555,6 +565,7 @@ class RealtimeNetworkClient {
         hour: '2-digit',
         minute: '2-digit',
       }),
+      ...(attachment || {}),
     };
 
     if (existing) {
@@ -572,7 +583,13 @@ class RealtimeNetworkClient {
       const res = await fetch('/api/network/chat-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ friendshipId, senderId, senderName, text }),
+        body: JSON.stringify({
+          friendshipId,
+          senderId,
+          senderName,
+          text,
+          ...(attachment || {}),
+        }),
       });
       if (res.ok) {
         const data = await res.json();

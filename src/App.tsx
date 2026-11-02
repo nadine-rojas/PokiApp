@@ -73,6 +73,10 @@ interface StoredFriendship {
     senderName: string;
     text: string;
     timestamp: string;
+    attachmentType?: 'gif' | 'drawing';
+    attachmentId?: string;
+    attachmentTitle?: string;
+    attachmentUrl?: string;
   }[];
 }
 
@@ -814,7 +818,16 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = (friendshipId: string, text: string) => {
+  const handleSendMessage = (
+    friendshipId: string,
+    text: string,
+    attachment?: {
+      attachmentType: 'gif' | 'drawing';
+      attachmentId?: string;
+      attachmentTitle?: string;
+      attachmentUrl?: string;
+    }
+  ) => {
     setStoredFriendships((prev) =>
       prev.map((sf) => {
         if (sf.id !== friendshipId) return sf;
@@ -828,6 +841,7 @@ export default function App() {
               senderName: currentProfile.name,
               text,
               timestamp: 'Ahora',
+              ...(attachment || {}),
             },
           ],
         };
@@ -837,7 +851,8 @@ export default function App() {
       friendshipId,
       currentProfile.id,
       currentProfile.name,
-      text
+      text,
+      attachment
     );
   };
 
@@ -1003,6 +1018,8 @@ export default function App() {
         {currentSafeTab === 'learn' && (
           <LearnView
             userName={currentProfile.name}
+            userAvatarId={currentProfile.avatarId}
+            userFriendCode={currentProfile.friendCode}
             ageGroup={currentProfile.ageGroup}
             age={currentProfile.age}
             streak={currentProfile.streak}
@@ -1014,10 +1031,13 @@ export default function App() {
             allowedSubjects={currentProfile.allowedSubjects}
             completedLessonIds={currentProfile.completedLessonIds}
             completedBookIds={currentProfile.completedBookIds}
+            onlinePeers={sameGroupUsersAcrossBrowsers}
             onCompleteLesson={handleCompleteLesson}
             onCompleteBook={handleCompleteBook}
             onOpenLibrary={() => setActiveTab('library')}
             onOpenChess={() => setActiveTab('chess')}
+            onOpenRoutines={() => setActiveTab('routines')}
+            onOpenFriends={() => setActiveTab('friends')}
             onOpenParentalPanel={() => setActiveTab('profile')}
           />
         )}
@@ -1143,18 +1163,12 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR FLOTANTE CENTRADA (Sin scrollbar interna + Botón de Modo Claro / Modo Oscuro en tiempo real) */}
+      {/* BARRA DE NAVEGACIÓN INFERIOR FLOTANTE CÁPSULA OSCURA (Imagen 4: cápsula #23222A con ícono activo en círculo violeta #7C69EF + Toggle Claro/Oscuro) */}
       <div className="fixed bottom-3 left-0 right-0 z-40 px-2 sm:px-4 pointer-events-none flex justify-center">
         <nav
           aria-label="Menú inferior de navegación"
           data-testid="floating-bottom-nav"
-          className={`pointer-events-auto rounded-full px-1.5 sm:px-3 py-1.5 shadow-2xl border-2 flex items-center justify-center gap-0.5 sm:gap-1.5 overflow-hidden max-w-[calc(100vw-16px)] ${
-            isDarkMode
-              ? 'bg-[#1A142D]/95 border-purple-500/40 text-purple-100'
-              : isYoungKid
-              ? 'bg-white/95 border-[#FF6B6B]/40 text-slate-900'
-              : 'bg-white/95 border-emerald-200 text-slate-900'
-          }`}
+          className="pointer-events-auto rounded-full px-2 sm:px-3.5 py-2 shadow-2xl border border-[#3A3846] bg-[#23222A]/95 text-white flex items-center justify-center gap-1 sm:gap-2 overflow-hidden max-w-[calc(100vw-16px)] backdrop-blur-md"
         >
           {navItemsForGroup.map((item) => {
             const active =
@@ -1169,14 +1183,10 @@ export default function App() {
                   playRewardSound('pop');
                   setActiveTab(item.id);
                 }}
-                className={`min-h-[42px] px-2 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 ${
+                className={`min-h-[42px] px-2.5 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 ${
                   active
-                    ? isYoungKid && !isDarkMode
-                      ? 'bg-[#FF6B6B] text-white font-black shadow-xs'
-                      : isDarkMode
-                      ? 'bg-[#BEF264] text-slate-950 font-black shadow-xs'
-                      : 'bg-[#84CC16] text-slate-950 font-black shadow-xs'
-                    : 'opacity-75 hover:opacity-100 font-bold'
+                    ? 'bg-[#7C69EF] text-white font-black shadow-lg shadow-[#7C69EF]/40 scale-105'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10 font-bold'
                 }`}
               >
                 <span className="shrink-0">{item.icon}</span>
@@ -1189,7 +1199,7 @@ export default function App() {
 
           <div
             aria-hidden="true"
-            className="w-px h-6 bg-slate-300/50 dark:bg-purple-500/30 mx-0.5 shrink-0"
+            className="w-px h-6 bg-white/15 mx-0.5 shrink-0"
           />
 
           {/* Botón de Modo Claro / Modo Oscuro integrado en la barra inferior flotante */}
@@ -1206,7 +1216,7 @@ export default function App() {
             className={`min-h-[42px] px-2.5 sm:px-3.5 rounded-full flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all shrink-0 font-extrabold ${
               isDarkMode
                 ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
-                : 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'bg-white/10 text-slate-200 hover:bg-white/20'
             }`}
           >
             {isDarkMode ? (

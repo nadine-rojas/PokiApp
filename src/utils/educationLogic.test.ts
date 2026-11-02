@@ -25,6 +25,11 @@ import {
   generateFriendCode,
   normalizeFriendCode,
   getLibraryConfigForAgeGroup,
+  evaluateFacialAgeVerification,
+  evaluateChatImageSafety,
+  detectGroomingOrPersonalDataInChat,
+  ANTI_CHILD_PHOTO_LEGAL_MESSAGE,
+  SAFE_KIDS_GIFS,
 } from './educationLogic';
 import { getBooksForAgeGroup } from '../data/curriculumData';
 
@@ -73,42 +78,32 @@ test('isLessonUnlocked unlocks lesson 0 and locks subsequent lessons until previ
   assert.equal(isLessonUnlocked(1, 'lesson-1', ['lesson-1']), true);
 });
 
-test('getNavigationTabsForAgeGroup includes games in navigation bar and Routines only for age >= 10 without exposing age groups', () => {
-  assert.equal(canAccessRoutines(5), false);
-  assert.equal(canAccessRoutines(8), false);
+test('getNavigationTabsForAgeGroup includes routines and games in navigation bar without exposing age groups', () => {
+  assert.equal(canAccessRoutines(5), true);
   assert.equal(canAccessRoutines(10), true);
   assert.equal(canAccessRoutines(15), true);
 
   assert.deepEqual(getNavigationTabsForAgeGroup('3-6', 5), [
     'learn',
     'library',
+    'routines',
     'chess',
     'games',
     'friends',
     'profile',
   ]);
-  // 8-year-old in Group 2 (7-13) sees 'games' but not 'routines'
-  assert.deepEqual(getNavigationTabsForAgeGroup('7-13', 8), [
-    'learn',
-    'chess',
-    'games',
-    'friends',
-    'profile',
-  ]);
-  // 10-year-old in Group 2 sees 'routines' and 'games'
   assert.deepEqual(getNavigationTabsForAgeGroup('7-13', 10), [
     'learn',
-    'chess',
     'routines',
+    'chess',
     'games',
     'friends',
     'profile',
   ]);
-  // 16-year-old in Group 3 sees 'routines' and 'games'
   assert.deepEqual(getNavigationTabsForAgeGroup('14-18', 16), [
     'learn',
-    'chess',
     'routines',
+    'chess',
     'games',
     'friends',
     'profile',
@@ -229,11 +224,88 @@ test('getAgeGroup, requiresParentalConsent, and canCustomizeWallpaper work acros
   assert.equal(areUsersInSameAgeGroup('3-6', '14-18'), false);
 });
 
-test('moderateChatMessage blocks inappropriate words and personal data', () => {
-  assert.equal(moderateChatMessage('¡Hola amigo, jugamos serpientes!').allowed, true);
-  assert.equal(moderateChatMessage('Eres un tonto').allowed, false);
-  assert.equal(moderateChatMessage('Mi correo es nino@correo.com').allowed, false);
-  assert.equal(moderateChatMessage('Llamame al 5551234567').allowed, false);
+test('moderateChatMessage and detectGroomingOrPersonalDataInChat block grooming, personal photo requests, home addresses, and trigger automatic user block & expulsion', () => {
+  const safeMsg = moderateChatMessage('¡Hola amigo, jugamos serpientes!');
+  assert.equal(safeMsg.allowed, true);
+  assert.equal(safeMsg.autoBlockAndExpelSender, false);
+
+  // Profanity blocks message without grooming expulsion
+  const profanityMsg = moderateChatMessage('Eres un tonto');
+  assert.equal(profanityMsg.allowed, false);
+
+  // Asking for personal photos ("mandame una foto", "mostrate") triggers instant block AND automatic peer expulsion
+  const photoReq1 = detectGroomingOrPersonalDataInChat('Hola, mandame una foto tuya');
+  assert.equal(photoReq1.allowed, false);
+  assert.equal(photoReq1.isCriticalGrooming, true);
+  assert.equal(photoReq1.autoBlockAndExpelSender, true);
+  assert.equal(photoReq1.violationCategory, 'photo_request');
+
+  const photoReq2 = moderateChatMessage('mostrate en la camara');
+  assert.equal(photoReq2.allowed, false);
+  assert.equal(photoReq2.autoBlockAndExpelSender, true);
+
+  // Asking for home address ("dónde vivís", "tu dirección") triggers instant block AND automatic peer expulsion
+  const addressReq = detectGroomingOrPersonalDataInChat('¿Dónde vivís? Pásame tu dirección');
+  assert.equal(addressReq.allowed, false);
+  assert.equal(addressReq.isCriticalGrooming, true);
+  assert.equal(addressReq.autoBlockAndExpelSender, true);
+  assert.equal(addressReq.violationCategory, 'address_location');
+
+  // Asking for school or in-person meeting triggers instant block AND automatic peer expulsion
+  const schoolReq = detectGroomingOrPersonalDataInChat('¿A qué escuela vas?');
+  assert.equal(schoolReq.allowed, false);
+  assert.equal(schoolReq.autoBlockAndExpelSender, true);
+
+  const meetupReq = detectGroomingOrPersonalDataInChat('Podemos vernos en persona sin que sepan tus papás');
+  assert.equal(meetupReq.allowed, false);
+  assert.equal(meetupReq.autoBlockAndExpelSender, true);
+});
+
+test('evaluateFacialAgeVerification allows minors (3-18) and immediately blocks adults (>18) or missing faces', () => {
+  const minorCheck = evaluateFacialAgeVerification({
+    faceDetected: true,
+    estimatedAge: 10,
+    isAdultOver18: false,
+  });
+  assert.equal(minorCheck.allowed, true);
+  assert.equal(minorCheck.isMinorUnder18, true);
+  assert.equal(minorCheck.isAdultOver18, false);
+
+  const adultCheck = evaluateFacialAgeVerification({
+    faceDetected: true,
+    estimatedAge: 29,
+    isAdultOver18: true,
+  });
+  assert.equal(adultCheck.allowed, false);
+  assert.equal(adultCheck.isAdultOver18, true);
+
+  const noFaceCheck = evaluateFacialAgeVerification({
+    faceDetected: false,
+    estimatedAge: null,
+  });
+  assert.equal(noFaceCheck.allowed, false);
+  assert.equal(noFaceCheck.faceDetected, false);
+});
+
+test('evaluateChatImageSafety blocks real photos of children/people with exact legal warning and allows course drawings & safe GIFs', () => {
+  const blockedPersonPhoto = evaluateChatImageSafety({
+    containsPersonOrFace: true,
+    fileName: 'selfie_nino.jpg',
+    imageKind: 'photo',
+  });
+  assert.equal(blockedPersonPhoto.allowed, false);
+  assert.equal(blockedPersonPhoto.containsPersonOrFace, true);
+  assert.equal(blockedPersonPhoto.reason, ANTI_CHILD_PHOTO_LEGAL_MESSAGE);
+
+  const allowedCourseDrawing = evaluateChatImageSafety({
+    containsPersonOrFace: false,
+    fileName: 'dibujo_curso_perspectiva.png',
+    imageKind: 'drawing',
+  });
+  assert.equal(allowedCourseDrawing.allowed, true);
+  assert.equal(allowedCourseDrawing.containsPersonOrFace, false);
+
+  assert.equal(SAFE_KIDS_GIFS.length >= 6, true);
 });
 
 test('generateFriendCode and normalizeFriendCode assign unique LUMI-XXXX Friend Codes for cross-browser connection', () => {
@@ -278,4 +350,5 @@ test('Library rules by age: 3-6 has Spanish stories WITH illustrations; 7-13 and
     true
   );
 });
+
 

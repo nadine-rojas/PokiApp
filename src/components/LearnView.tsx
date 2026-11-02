@@ -23,6 +23,15 @@ import {
   ChevronRight,
   ChevronLeft,
   Calendar,
+  LayoutGrid,
+  FolderKanban,
+  MessageSquare,
+  Users,
+  CalendarCheck2,
+  Award,
+  Trophy,
+  Bell,
+  Search,
 } from 'lucide-react';
 import {
   COURSES_DATA,
@@ -37,6 +46,7 @@ import {
 import {
   AgeGroup,
   ChildMood,
+  UserProfile,
   calculateLessonReward,
   getEncouragementMessage,
   isLessonUnlocked,
@@ -48,6 +58,7 @@ import {
   speakSpanishText,
 } from '../utils/soundEffects';
 import {
+  AvatarBadge,
   DrawingGuideArt,
   MascotCompanion,
   CircularProgressRing,
@@ -56,6 +67,8 @@ import { LibraryView } from './LibraryView';
 
 interface LearnViewProps {
   userName: string;
+  userAvatarId?: string;
+  userFriendCode?: string;
   ageGroup: AgeGroup;
   age: number;
   streak: number;
@@ -65,107 +78,55 @@ interface LearnViewProps {
   allowedSubjects: CourseSubject[];
   completedLessonIds: string[];
   completedBookIds: string[];
-  onCompleteLesson: (lessonId: string, xpEarned: number, subject: CourseSubject) => void;
+  onlinePeers?: UserProfile[];
+  onCompleteLesson: (
+    lessonId: string,
+    xpEarned: number,
+    subject: CourseSubject
+  ) => void;
   onCompleteBook: (bookId: string, xpReward: number) => void;
   onOpenLibrary: () => void;
   onOpenChess: () => void;
+  onOpenRoutines?: () => void;
+  onOpenFriends?: () => void;
   onOpenParentalPanel: () => void;
 }
 
-const MOOD_OPTIONS: {
-  id: ChildMood;
-  label: string;
-  faceSvg: React.ReactNode;
-}[] = [
-  {
-    id: 'happy',
-    label: 'Feliz',
-    faceSvg: (
-      <svg viewBox="0 0 36 36" className="w-7 h-7">
-        <circle cx="18" cy="18" r="16" fill="#FDE047" />
-        <circle cx="13" cy="15" r="2.2" fill="#0F172A" />
-        <circle cx="23" cy="15" r="2.2" fill="#0F172A" />
-        <path d="M12 21 Q18 27 24 21" stroke="#0F172A" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: 'excited',
-    label: 'Genial',
-    faceSvg: (
-      <svg viewBox="0 0 36 36" className="w-7 h-7">
-        <circle cx="18" cy="18" r="16" fill="#84CC16" />
-        <circle cx="13" cy="14" r="2.5" fill="#0F172A" />
-        <circle cx="23" cy="14" r="2.5" fill="#0F172A" />
-        <path d="M11 20 Q18 29 25 20 Z" fill="#0F172A" />
-      </svg>
-    ),
-  },
-  {
-    id: 'calm',
-    label: 'Tranquilo',
-    faceSvg: (
-      <svg viewBox="0 0 36 36" className="w-7 h-7">
-        <circle cx="18" cy="18" r="16" fill="#38BDF8" />
-        <path d="M10 15 Q13 13 16 15" stroke="#0F172A" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-        <path d="M20 15 Q23 13 26 15" stroke="#0F172A" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-        <path d="M13 22 Q18 25 23 22" stroke="#0F172A" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: 'curious',
-    label: 'Curioso',
-    faceSvg: (
-      <svg viewBox="0 0 36 36" className="w-7 h-7">
-        <circle cx="18" cy="18" r="16" fill="#FB923C" />
-        <circle cx="13" cy="15" r="2.4" fill="#0F172A" />
-        <circle cx="23" cy="15" r="2.4" fill="#0F172A" />
-        <circle cx="18" cy="23" r="3" fill="#0F172A" />
-      </svg>
-    ),
-  },
-  {
-    id: 'focused',
-    label: 'Enfocado',
-    faceSvg: (
-      <svg viewBox="0 0 36 36" className="w-7 h-7">
-        <circle cx="18" cy="18" r="16" fill="#A855F7" />
-        <circle cx="13" cy="15" r="2.2" fill="#FFFFFF" />
-        <circle cx="23" cy="15" r="2.2" fill="#FFFFFF" />
-        <path d="M13 22 L23 22" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
+const STREAK_WEEKDAYS = [
+  { short: 'D', done: false },
+  { short: 'L', done: true },
+  { short: 'M', done: true },
+  { short: 'M', done: true },
+  { short: 'J', done: true },
+  { short: 'V', done: true },
+  { short: 'S', done: false },
 ];
 
-const WEEK_DAYS = [
-  { short: 'L', num: '12', done: true },
-  { short: 'M', num: '13', done: true },
-  { short: 'X', num: '14', active: true },
-  { short: 'J', num: '15', done: false },
-  { short: 'V', num: '16', done: false },
-  { short: 'S', num: '17', done: false },
-  { short: 'D', num: '18', done: false },
-];
+const CALENDAR_DAYS = Array.from({ length: 30 }, (_, i) => i + 1);
 
 export function LearnView({
   userName,
+  userAvatarId = 'p9_flower_crown_boy',
+  userFriendCode = 'LUMI-1024',
   ageGroup,
   streak,
   xp,
-  mood = 'happy',
-  onChangeMood,
   allowedSubjects,
   completedLessonIds,
   completedBookIds,
+  onlinePeers = [],
   onCompleteLesson,
   onCompleteBook,
   onOpenLibrary,
+  onOpenChess,
+  onOpenRoutines,
+  onOpenFriends,
   onOpenParentalPanel,
 }: LearnViewProps) {
-  // Para las etapas de 7-13 y 14-18, la Biblioteca de Libros vive dentro de "Aprender"
-  const [subView, setSubView] = useState<'courses' | 'library'>('courses');
+  // Selector entre Dashboard Principal (Imagen 1 - Quixel), Mis Cursos (Imagen 2 - eCoursie) y Biblioteca
+  const [subView, setSubView] = useState<'quixel_dashboard' | 'ecoursie_courses' | 'library'>('quixel_dashboard');
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(13);
+  const [courseFilterLevel, setCourseFilterLevel] = useState<'todos' | 'inicial' | 'avanzado'>('todos');
 
   const coursesForAge = COURSES_DATA.filter(
     (c) => c.ageGroup === ageGroup && allowedSubjects.includes(c.subject)
@@ -421,13 +382,7 @@ export function LearnView({
 
   if (!activeCourse) {
     return (
-      <div
-        className={`rounded-[32px] border p-8 text-center space-y-4 ${
-          isTeenDark
-            ? 'bg-[#181426] border-purple-900/50 text-white'
-            : 'bg-white border-slate-200 text-slate-900'
-        }`}
-      >
+      <div className="rounded-[32px] border p-8 text-center space-y-4 bg-white dark:bg-[#181426] border-slate-200 dark:border-purple-900/50">
         <Lock className="w-10 h-10 text-amber-500 mx-auto" />
         <h2 className="text-xl font-bold font-display">
           No hay cursos activos en este momento
@@ -448,25 +403,31 @@ export function LearnView({
 
   const availableStageBooks = getBooksForAgeGroup(ageGroup);
 
-  // Si en las etapas 7-13 o 14-18 el usuario abrió la Biblioteca integrada dentro de "Aprender"
-  if (!isYoungKid && subView === 'library') {
+  if (subView === 'library') {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
-          <div className="inline-flex p-1.5 rounded-full bg-black/5 border border-slate-300/30">
+          <div className="inline-flex p-1.5 rounded-full bg-slate-900 text-white shadow-sm">
             <button
               type="button"
-              onClick={() => setSubView('courses')}
-              className="px-5 py-2 rounded-full text-xs font-extrabold opacity-75 hover:opacity-100"
+              onClick={() => setSubView('quixel_dashboard')}
+              className="px-4 py-2 rounded-full text-xs font-extrabold opacity-80 hover:opacity-100"
             >
-              Mis Cursos
+              Dashboard (Quixel)
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubView('ecoursie_courses')}
+              className="px-4 py-2 rounded-full text-xs font-extrabold opacity-80 hover:opacity-100"
+            >
+              Mis Cursos (eCoursie)
             </button>
             <button
               type="button"
               onClick={() => setSubView('library')}
-              className="px-5 py-2 rounded-full text-xs font-extrabold bg-[#84CC16] text-slate-950 shadow-xs"
+              className="px-4 py-2 rounded-full text-xs font-extrabold bg-[#D4FF59] text-slate-950"
             >
-              Biblioteca · English Stories ({availableStageBooks.length})
+              Biblioteca ({availableStageBooks.length})
             </button>
           </div>
         </div>
@@ -486,344 +447,801 @@ export function LearnView({
     (completedInCourse / Math.max(1, activeCourse.lessons.length)) * 100
   );
 
-  // Colores de mosaicos por curso (estilo Habitz / moimoi / Plopp / Quixel)
-  const tileColorsBySubject: Record<CourseSubject, string> = {
-    reading: 'from-[#FF6B6B] to-[#FF8E53] text-white',
-    math: 'from-[#38BDF8] to-[#2563EB] text-white',
-    orthography: 'from-[#FB923C] to-[#EA580C] text-white',
-    finance: 'from-[#84CC16] to-[#10B981] text-slate-950',
-    drawing: 'from-[#FB7185] to-[#E11D48] text-white',
-    entrepreneurship: 'from-[#A855F7] to-[#6366F1] text-white',
-    piano: 'from-[#FACC15] to-[#F59E0B] text-slate-950',
-    chess_course: 'from-[#2DD4BF] to-[#0D9488] text-slate-950',
-    prayer: 'from-[#60A5FA] to-[#4F46E5] text-white',
-  };
+  const nextUnlockedLesson =
+    activeCourse.lessons.find((l) => !completedLessonIds.includes(l.id)) ||
+    activeCourse.lessons[0];
+
+  // Barras de progreso de XP por materia para la tarjeta inclinada de Racha (Imagen 1 - Quixel)
+  const subjectProgressBars = coursesForAge.slice(0, 4).map((c, idx) => {
+    const done = c.lessons.filter((l) => completedLessonIds.includes(l.id)).length;
+    const pct = Math.max(
+      18,
+      Math.round((done / Math.max(1, c.lessons.length)) * 100) || (4 - idx) * 18
+    );
+    const subjectXp = done * 120 + xp;
+    return {
+      id: c.id,
+      title: c.title,
+      pct,
+      xpText: `${subjectXp} XP`,
+    };
+  });
+
+  // Colores pastel horizontales para la vista Mis Cursos (Imagen 2 - eCoursie)
+  const ecoursiePastelThemes = [
+    {
+      cardBg: 'bg-[#F3F4FF] dark:bg-[#231F3D] border-[#E0E4FF] dark:border-purple-800/40',
+      circleBtn: 'bg-[#6C63FF] text-white',
+      accentBlob: '#6C63FF',
+    },
+    {
+      cardBg: 'bg-[#F9F0FF] dark:bg-[#2A1E3D] border-[#F0D9FF] dark:border-purple-800/40',
+      circleBtn: 'bg-[#C066FF] text-white',
+      accentBlob: '#C066FF',
+    },
+    {
+      cardBg: 'bg-[#FFF2F4] dark:bg-[#331F2E] border-[#FFE0E6] dark:border-rose-800/40',
+      circleBtn: 'bg-[#F472B6] text-white',
+      accentBlob: '#F472B6',
+    },
+    {
+      cardBg: 'bg-[#EFF8FF] dark:bg-[#1C2A3E] border-[#D8EEFF] dark:border-sky-800/40',
+      circleBtn: 'bg-[#38BDF8] text-slate-950',
+      accentBlob: '#38BDF8',
+    },
+  ];
+
+  const connectedPeersList = onlinePeers.filter((p) => p.name !== userName);
 
   return (
     <div className="space-y-8">
-      {/* Selector superior Cursos vs Biblioteca (para 7-13 y 14-18, donde Biblioteca está dentro de Aprender) */}
-      {!isYoungKid && (
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div
-            className={`inline-flex p-1.5 rounded-full border ${
-              isTeenDark
-                ? 'bg-[#1A1528] border-purple-900/50'
-                : 'bg-white border-slate-200 shadow-xs'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => setSubView('courses')}
-              className={`px-5 py-2 rounded-full text-xs font-extrabold transition-all ${
-                subView === 'courses'
-                  ? 'bg-[#84CC16] text-slate-950 shadow-xs'
-                  : 'opacity-75 hover:opacity-100'
-              }`}
-            >
-              Mosaico de Cursos
-            </button>
-            <button
-              type="button"
-              data-testid="learn-open-library-tab"
-              onClick={() => {
-                playRewardSound('pop');
-                setSubView('library');
-              }}
-              className="px-5 py-2 rounded-full text-xs font-extrabold opacity-80 hover:opacity-100 flex items-center gap-1.5"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Biblioteca · English Stories ({availableStageBooks.length})
-            </button>
-          </div>
-        </div>
-      )}
+      {/* =====================================================================
+          1. DASHBOARD PRINCIPAL ESTILO "QUIXEL" (IMAGEN 1)
+             - Barra superior oscura redondeada (Dashboard, Cursos, Retos, Amigos) + Perfil a la derecha
+             - Saludo grande "¡Buen día, [Nombre]!" + 4 tarjetas arriba (Puntos, Cursos, Certificados, Retos)
+             - Tarjeta "Continuar aprendiendo" con borde negro fino neobrutalista, acento lima (#D4FF59) y violeta
+             - Tarjeta flotante inclinada de Racha ("Racha de días") con círculos D L M M J V S y barras de XP
+         ===================================================================== */}
+      {subView === 'quixel_dashboard' ? (
+        <section
+          data-testid="quixel-dashboard-shell"
+          className="rounded-[36px] bg-[#16161A] p-3 sm:p-4 shadow-2xl border-2 border-slate-900 space-y-3"
+        >
+          {/* Barra Superior Oscura Redondeada (Quixel Top Nav) */}
+          <div className="px-4 py-2.5 rounded-2xl bg-[#16161A] text-white flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="font-display font-black text-xl tracking-tight text-white">
+                quixel<span className="text-[#D4FF59]">.</span>lumi
+              </span>
+            </div>
 
-      {/* CABECERA VISUAL SEGÚN LA EXPERIENCIA DE EDAD (Aptivo/Plopp vs Habitz/Bosque vs Quixel/eCoursie) */}
-      {isYoungKid ? (
-        /* ESTILO 3 A 6 AÑOS: Aptivo y Plopp — Crema con Coral (#FF6B6B) y Verde Lima (#84CC16), Mascota Gigante y Botones Enormes */
-        <section className="rounded-[36px] p-6 sm:p-8 bg-gradient-to-br from-[#FFF5F5] via-[#FFFDF7] to-[#ECFCCB] border-4 border-[#FF6B6B]/40 shadow-lg">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
-              <MascotCompanion variant="flower" size="xl" mood="excited" />
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#FF6B6B] text-white text-xs font-black">
-                  <Sparkles className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <button
+                type="button"
+                data-testid="quixel-nav-dashboard"
+                onClick={() => setSubView('quixel_dashboard')}
+                className="px-4 py-2 rounded-full bg-[#2C2C34] text-white text-xs font-extrabold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-[#D4FF59]" />
+                <span>Dashboard</span>
+              </button>
+              <button
+                type="button"
+                data-testid="quixel-nav-courses"
+                onClick={() => {
+                  playRewardSound('pop');
+                  setSubView('ecoursie_courses');
+                }}
+                className="px-4 py-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <FolderKanban className="w-3.5 h-3.5" />
+                <span>Cursos</span>
+              </button>
+              <button
+                type="button"
+                data-testid="quixel-nav-challenges"
+                onClick={onOpenChess}
+                className="px-4 py-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Retos</span>
+              </button>
+              <button
+                type="button"
+                data-testid="quixel-nav-friends"
+                onClick={() => onOpenFriends?.()}
+                className="px-4 py-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Amigos</span>
+              </button>
+              <button
+                type="button"
+                data-testid="learn-open-library-tab"
+                onClick={() => {
+                  playRewardSound('pop');
+                  if (isYoungKid) {
+                    onOpenLibrary();
+                  } else {
+                    setSubView('library');
+                  }
+                }}
+                className="px-4 py-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-[#D4FF59]" />
+                <span>Biblioteca</span>
+              </button>
+            </div>
+
+            {/* Perfil del usuario a la derecha */}
+            <div className="flex items-center gap-2.5">
+              <AvatarBadge avatarId={userAvatarId} size="sm" />
+              <div className="text-left hidden sm:block">
+                <div className="text-xs font-extrabold text-white leading-tight">
                   ¡Hola, {userName}!
                 </div>
-                <h1 className="text-3xl sm:text-4xl font-black font-display text-slate-900">
-                  ¡Toca y Escucha!
-                </h1>
-                <p className="text-base font-bold text-slate-700 max-w-md">
-                  Completa tus estrellitas de <strong>Aprender a Leer</strong> y <strong>Ajedrez</strong> para ganar tu trofeo mágico.
-                </p>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  {userFriendCode}
+                </div>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() =>
-                  speakSpanishText(
-                    `¡Hola ${userName}! Toca un cuadro grande de colores para escuchar y jugar.`
-                  )
-                }
-                className="px-6 py-5 rounded-3xl bg-[#FF6B6B] hover:bg-[#FA5252] text-white font-black text-lg shadow-md flex items-center gap-2.5 transition-transform active:scale-95"
-              >
-                <Volume2 className="w-7 h-7" />
-                Escuchar Voz
-              </button>
-              <button
-                type="button"
-                onClick={onOpenLibrary}
-                className="px-6 py-5 rounded-3xl bg-[#84CC16] hover:bg-[#65A30D] text-slate-950 font-black text-lg shadow-md flex items-center gap-2.5 transition-transform active:scale-95"
-              >
-                <BookOpen className="w-7 h-7" />
-                Cuentos
-              </button>
-            </div>
           </div>
 
-          {/* Mosaicos Enormes para 3 a 6 años */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
-            {coursesForAge.map((course) => {
-              const isSelected = course.id === activeCourse.id;
-              const doneCount = course.lessons.filter((l) =>
-                completedLessonIds.includes(l.id)
-              ).length;
-              return (
-                <button
-                  key={course.id}
-                  type="button"
-                  onClick={() => {
-                    playRewardSound('pop');
-                    setSelectedCourseId(course.id);
-                    speakSpanishText(course.title);
-                  }}
-                  className={`p-6 rounded-[32px] border-4 text-left transition-all flex flex-col justify-between gap-4 shadow-md ${
-                    isSelected
-                      ? 'bg-gradient-to-br from-[#FF6B6B] to-[#FF8E53] text-white border-white scale-[1.02]'
-                      : 'bg-white text-slate-900 border-[#FED7AA] hover:border-[#FF6B6B]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="p-3.5 rounded-2xl bg-black/10">
-                      {getSubjectIcon(course.subject)}
-                    </span>
-                    <span className="px-3 py-1 rounded-full bg-white/90 text-slate-900 font-black text-sm tabular-nums">
-                      ★ {doneCount}/{course.lessons.length}
-                    </span>
-                  </div>
-                  <div className="text-xl font-black font-display leading-snug">
-                    {course.title}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : isTeenDark ? (
-        /* ESTILO 14 A 18 AÑOS: Quixel, eCoursie y Start Your Journey — "Buenos días, [nombre]", Lila y Morado con Acento Lima, Anillos y Calendario */
-        <section className="rounded-[32px] p-6 sm:p-8 bg-gradient-to-br from-[#1F1638] via-[#151125] to-[#26184A] border border-purple-500/30 text-white shadow-xl space-y-6">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <MascotCompanion variant="orb" size="md" mood="focused" />
+          {/* Lienzo Interior Blanco Redondeado del Dashboard Quixel */}
+          <div className="rounded-[28px] bg-white dark:bg-[#1E1B2E] text-slate-900 dark:text-white p-5 sm:p-8 space-y-7">
+            {/* Fila superior: Saludo "¡Buen día, [Nombre]!" + 4 Tarjetas Pequeñas (Puntos, Cursos, Certificados, Retos) */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
               <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#BEF264] text-slate-950 text-xs font-extrabold">
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  Racha Activa: {streak} días
-                </div>
-                <h1 className="text-2xl sm:text-4xl font-extrabold font-display tracking-tight">
-                  Buenos días, {userName}
+                <h1 className="text-2xl sm:text-4xl font-black font-display tracking-tight">
+                  ¡Buen día, {userName}!
                 </h1>
-                <p className="text-xs sm:text-sm text-purple-200/80">
-                  Continúa tu ruta de alto rendimiento y desbloquea el siguiente módulo.
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                  <span>
+                    Estás un {Math.max(15, courseProgressPercent)}% más cerca de completar tu meta semanal.
+                  </span>
+                  <Zap className="w-4 h-4 text-amber-500 fill-current" />
                 </p>
               </div>
-            </div>
 
-            {/* Anillos de progreso + Calendario semanal (Quixel / eCoursie) */}
-            <div className="flex flex-wrap items-center gap-5 bg-[#120E20]/90 p-4 rounded-3xl border border-purple-500/20">
-              <div className="flex items-center gap-3">
-                <CircularProgressRing
-                  percent={courseProgressPercent}
-                  size={68}
-                  strokeWidth={7}
-                  color="#BEF264"
-                  trackColor="rgba(167, 139, 250, 0.2)"
-                  label="Curso"
-                />
-                <div>
-                  <div className="text-xs text-purple-300 font-semibold">
-                    Dominio Actual
-                  </div>
-                  <div className="text-lg font-extrabold text-[#BEF264] tabular-nums">
-                    {xp} XP
-                  </div>
-                </div>
-              </div>
-
-              <div className="h-10 w-px bg-purple-500/20 hidden sm:block" />
-
-              <div>
-                <div className="text-[11px] font-bold text-purple-300 mb-1.5 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-[#BEF264]" />
-                  Calendario de Lecciones
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {WEEK_DAYS.map((d) => (
-                    <div
-                      key={d.short}
-                      className={`w-8 h-10 rounded-xl flex flex-col items-center justify-center text-[10px] font-bold ${
-                        d.active
-                          ? 'bg-[#BEF264] text-slate-950 font-black'
-                          : d.done
-                          ? 'bg-purple-600/40 text-white border border-purple-400/40'
-                          : 'bg-white/5 text-purple-300/60'
-                      }`}
-                    >
-                      <span>{d.short}</span>
-                      <span className="tabular-nums">{d.num}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Mosaico de Cursos Lila/Morado/Lima */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-            {coursesForAge.map((course) => {
-              const isSelected = course.id === activeCourse.id;
-              const doneCount = course.lessons.filter((l) =>
-                completedLessonIds.includes(l.id)
-              ).length;
-              return (
-                <button
-                  key={course.id}
-                  type="button"
-                  onClick={() => {
-                    playRewardSound('pop');
-                    setSelectedCourseId(course.id);
-                  }}
-                  className={`p-4 rounded-3xl border text-left transition-all flex flex-col justify-between gap-2.5 ${
-                    isSelected
-                      ? 'bg-[#BEF264] text-slate-950 border-[#BEF264] shadow-md font-extrabold'
-                      : 'bg-[#1D1632] text-purple-100 border-purple-800/50 hover:border-purple-400/60'
-                  }`}
+              {/* 4 Tarjetas pequeñas de resumen (Puntos, Cursos, Certificados, Retos) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div
+                  data-testid="quixel-stat-points"
+                  className="px-4 py-3 rounded-2xl bg-[#FFFDF2] dark:bg-amber-950/40 border-2 border-slate-900 dark:border-amber-500/40 flex items-center gap-3 shadow-[2px_2px_0px_#0F172A]"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`p-2 rounded-2xl ${
-                        isSelected ? 'bg-slate-950/10' : 'bg-purple-500/20 text-[#BEF264]'
-                      }`}
+                  <span className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                    ★
+                  </span>
+                  <div>
+                    <div className="text-base sm:text-lg font-black tabular-nums leading-none">
+                      {xp}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-300 font-bold mt-0.5">
+                      Puntos
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  data-testid="quixel-stat-courses"
+                  className="px-4 py-3 rounded-2xl bg-[#F5F3FF] dark:bg-purple-950/40 border-2 border-slate-900 dark:border-purple-500/40 flex items-center gap-3 shadow-[2px_2px_0px_#0F172A]"
+                >
+                  <span className="w-8 h-8 rounded-full bg-[#7C69EF] text-white flex items-center justify-center font-black text-xs shrink-0">
+                    <BookOpen className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <div className="text-base sm:text-lg font-black tabular-nums leading-none">
+                      {coursesForAge.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-300 font-bold mt-0.5">
+                      Cursos
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  data-testid="quixel-stat-certificates"
+                  className="px-4 py-3 rounded-2xl bg-[#FEFCE8] dark:bg-emerald-950/40 border-2 border-slate-900 dark:border-emerald-500/40 flex items-center gap-3 shadow-[2px_2px_0px_#0F172A]"
+                >
+                  <span className="w-8 h-8 rounded-full bg-[#D4FF59] text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                    <Award className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <div className="text-base sm:text-lg font-black tabular-nums leading-none">
+                      {completedLessonIds.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-300 font-bold mt-0.5">
+                      Certificados
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  data-testid="quixel-stat-challenges"
+                  className="px-4 py-3 rounded-2xl bg-[#F3E8FF] dark:bg-indigo-950/40 border-2 border-slate-900 dark:border-indigo-500/40 flex items-center gap-3 shadow-[2px_2px_0px_#0F172A]"
+                >
+                  <span className="w-8 h-8 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center font-black text-xs shrink-0">
+                    <Trophy className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <div className="text-base sm:text-lg font-black tabular-nums leading-none">
+                      {Math.max(1, streak)}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-300 font-bold mt-0.5">
+                      Retos
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cuerpo Central Quixel: Izquierda ("Continuar aprendiendo" + "Recomendados para ti") | Derecha (Tarjeta Flotante Inclinada de Racha) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+              {/* Columna Izquierda (7 cols): Continuar aprendiendo + Recomendados */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base sm:text-lg font-black font-display">
+                      Continuar aprendiendo
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <span className="w-9 h-9 rounded-full bg-[#D4FF59] border-2 border-slate-900 flex items-center justify-center text-slate-950">
+                        <Bell className="w-4 h-4" />
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tarjeta "Continuar aprendiendo" con borde negro fino estilo neobrutalista, acento lima (#D4FF59) y violeta */}
+                  <div
+                    data-testid="quixel-continue-learning-card"
+                    className="rounded-[28px] bg-white dark:bg-[#26223A] border-2 border-slate-900 shadow-[4px_4px_0px_#0F172A] overflow-hidden flex flex-col sm:flex-row items-stretch"
+                  >
+                    {/* Bloque ilustrado verde lima a la izquierda */}
+                    <div className="sm:w-36 bg-[#D4FF59] p-5 flex items-center justify-center border-b-2 sm:border-b-0 sm:border-r-2 border-slate-900 shrink-0">
+                      <div className="w-16 h-16 rounded-2xl bg-[#7C69EF] text-white border-2 border-slate-900 flex items-center justify-center shadow-[3px_3px_0px_#0F172A]">
+                        {getSubjectIcon(activeCourse.subject)}
+                      </div>
+                    </div>
+
+                    {/* Contenido del curso activo y barra de progreso */}
+                    <div className="flex-1 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-2 flex-1">
+                        <div className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#6D28D9] dark:text-[#C4B5FD]">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Curso · Etapa {ageGroup} años</span>
+                        </div>
+                        <h3 className="text-xl font-black font-display">
+                          {activeCourse.title}
+                        </h3>
+                        <div className="text-xs font-bold text-slate-500 dark:text-slate-300">
+                          <strong>{courseProgressPercent}%</strong> de 100% Completado ({completedInCourse}/{activeCourse.lessons.length} niveles)
+                        </div>
+                        <div className="w-full max-w-xs h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden border border-slate-300 dark:border-slate-700">
+                          <div
+                            className="h-full bg-[#7C69EF] rounded-full transition-all duration-300"
+                            style={{ width: `${Math.max(12, courseProgressPercent)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => startLesson(nextUnlockedLesson)}
+                        className="px-5 py-3 rounded-full bg-[#16161A] hover:bg-slate-800 text-white font-extrabold text-xs whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                      >
+                        Continuar lección
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cuadrícula "Recomendados para ti" estilo Quixel */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-base sm:text-lg font-black font-display">
+                      Recomendados para ti
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setSubView('ecoursie_courses')}
+                      className="text-xs font-extrabold text-[#5B58EB] dark:text-[#D4FF59] hover:underline flex items-center gap-1"
                     >
-                      {getSubjectIcon(course.subject)}
-                    </span>
-                    <span className="text-xs font-mono font-bold tabular-nums">
-                      {doneCount}/{course.lessons.length}
-                    </span>
+                      <span>Ver todos en Mis Cursos (eCoursie)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="text-sm font-extrabold leading-snug">
-                    {course.title}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {coursesForAge.slice(0, 4).map((course) => {
+                      const isSelected = course.id === activeCourse.id;
+                      const doneCount = course.lessons.filter((l) =>
+                        completedLessonIds.includes(l.id)
+                      ).length;
+                      return (
+                        <button
+                          key={course.id}
+                          type="button"
+                          onClick={() => {
+                            playRewardSound('pop');
+                            setSelectedCourseId(course.id);
+                          }}
+                          className={`p-4 rounded-[24px] border-2 border-slate-900 text-left transition-all flex items-center justify-between gap-3 relative overflow-hidden cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#F8FAFC] dark:bg-[#2A2440] shadow-[4px_4px_0px_#0F172A] ring-2 ring-[#7C69EF]'
+                              : 'bg-white dark:bg-[#221D35] hover:shadow-[3px_3px_0px_#0F172A]'
+                          }`}
+                        >
+                          <div className="space-y-2 z-10 min-w-0">
+                            <span className="text-[11px] font-bold text-[#6D28D9] dark:text-[#C4B5FD] flex items-center gap-1">
+                              <span>♦ Curso</span>
+                            </span>
+                            <div className="font-black text-sm sm:text-base truncate">
+                              {course.title}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px]">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 font-bold">
+                                Nivel {doneCount + 1}
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-300 font-semibold">
+                                · {course.lessons.length} lecciones
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Esquina verde lima característica de Quixel */}
+                          <div className="w-14 h-14 rounded-2xl bg-[#D4FF59] border-2 border-slate-900 flex items-center justify-center text-slate-950 shrink-0 z-10">
+                            {getSubjectIcon(course.subject)}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                </button>
-              );
-            })}
+
+                  <button
+                    type="button"
+                    data-testid="open-ecoursie-view-btn"
+                    onClick={() => {
+                      playRewardSound('pop');
+                      setSubView('ecoursie_courses');
+                    }}
+                    className="w-full py-2.5 rounded-2xl border-2 border-slate-300 dark:border-slate-700 hover:border-slate-900 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>Ver todos los cursos ({coursesForAge.length}) ↗</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Columna Derecha (5 cols): Tarjeta Flotante Inclinada de Racha ("Racha de días" - Imagen 1 Quixel) */}
+              <div className="lg:col-span-5 space-y-5">
+                <div
+                  data-testid="quixel-tilted-streak-card"
+                  className="rounded-[28px] bg-white dark:bg-[#26213A] border-2 border-slate-900 p-6 shadow-[6px_6px_0px_#0F172A] lg:-rotate-1 transition-transform hover:rotate-0 space-y-5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-xl sm:text-2xl font-black font-display leading-tight">
+                        ¡Llevas una racha de {Math.max(1, streak)} días!
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-300 font-semibold mt-0.5">
+                        Completa lecciones cada día para encender el rayo lima.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 font-display font-black text-2xl text-slate-900 dark:text-white shrink-0">
+                      <Zap className="w-6 h-6 text-[#A3E635] fill-[#D4FF59] stroke-slate-900" />
+                      <span>{Math.max(1, streak)}</span>
+                    </div>
+                  </div>
+
+                  {/* Círculos de los días de la semana (D L M M J V S) con rayos en verde lima */}
+                  <div className="grid grid-cols-7 gap-1.5 pt-1">
+                    {STREAK_WEEKDAYS.map((day, idx) => (
+                      <div
+                        key={`${day.short}-${idx}`}
+                        className={`h-10 rounded-full border-2 border-slate-900 flex items-center justify-center text-xs font-black ${
+                          day.done
+                            ? 'bg-[#D4FF59] text-slate-950 shadow-[1px_1px_0px_#0F172A]'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {day.done ? (
+                          <Zap className="w-4 h-4 fill-slate-950" />
+                        ) : (
+                          day.short
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Barras de progreso de XP por materia (Imagen 1 Quixel) */}
+                  <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    {subjectProgressBars.map((bar) => (
+                      <div
+                        key={bar.id}
+                        className="grid grid-cols-12 items-center gap-2 text-xs"
+                      >
+                        <span className="col-span-5 font-extrabold truncate">
+                          {bar.title}
+                        </span>
+                        <div className="col-span-5 h-3 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-900 overflow-hidden p-0.5">
+                          <div
+                            className="h-full rounded-full bg-[#2DD4BF]"
+                            style={{ width: `${bar.pct}%` }}
+                          />
+                        </div>
+                        <span className="col-span-2 text-right font-mono font-bold text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
+                          {bar.xpText}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tarjeta Violeta Inferior estilo Quixel (Acceso rápido a Rutinas y Cuentos) */}
+                <div className="rounded-[26px] bg-gradient-to-r from-[#635BFF] to-[#8B5CF6] text-white p-5 border-2 border-slate-900 shadow-[4px_4px_0px_#0F172A] flex items-center justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-extrabold uppercase tracking-wider text-[#D4FF59]">
+                      Plan de Estudio y Lectura
+                    </div>
+                    <h4 className="font-black text-base font-display leading-snug">
+                      Organiza tus Rutinas (+5 Gemas) y lee Cuentos
+                    </h4>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onOpenRoutines?.()}
+                        className="px-3.5 py-1.5 rounded-full bg-white text-slate-950 font-extrabold text-xs cursor-pointer"
+                      >
+                        Ir a Rutinas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isYoungKid ? onOpenLibrary() : setSubView('library')
+                        }
+                        className="px-3.5 py-1.5 rounded-full bg-[#D4FF59] text-slate-950 font-extrabold text-xs cursor-pointer"
+                      >
+                        Abrir Biblioteca
+                      </button>
+                    </div>
+                  </div>
+                  <MascotCompanion variant="flower" size="sm" mood="excited" />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       ) : (
-        /* ESTILO 7 A 13 AÑOS: Habitz, moimoi y App del Bosque — Ilustración de bosque, Mosaicos Inclinados y Selector de Estado de Ánimo con Caritas */
-        <section className="rounded-[34px] p-6 sm:p-8 bg-gradient-to-br from-[#ECFCCB] via-[#E0F2FE] to-[#FEF3C7] border-2 border-emerald-300/80 shadow-md space-y-6 relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-center gap-4">
-              <MascotCompanion variant="droplet" size="lg" mood={mood} />
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 text-emerald-800 text-xs font-extrabold shadow-2xs">
-                  <Flame className="w-3.5 h-3.5 text-orange-500 fill-current" />
-                  Racha en el Bosque: {streak} días
+        /* =====================================================================
+           2. SECCIÓN "MIS CURSOS" EN 3 COLUMNAS ESTILO "eCOURSIE" (IMAGEN 2)
+              - Columna 1: Menú lateral izquierdo vertical (#5B58EB) con íconos limpios (Dashboard, Todos los Cursos, Mensajes, Amigos, Rutinas)
+              - Columna 2: Centro con filtros suaves y tarjetas horizontales anchas en tonos pastel (lavanda, rosa suave, celeste) y botón circular ">"
+              - Columna 3: Derecha con Calendario Mensual interactivo arriba y lista de "Amigos Conectados" (Online Users) abajo
+           ===================================================================== */
+        <section
+          data-testid="ecoursie-three-column-layout"
+          className="rounded-[36px] bg-[#5B58EB] p-2 sm:p-3 shadow-2xl border-2 border-[#4A47D5]"
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 items-stretch">
+            {/* COLUMNA 1: Menú Lateral Izquierdo Vertical en #5B58EB */}
+            <aside className="lg:col-span-2 text-white p-4 sm:p-5 flex flex-col justify-between gap-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 px-2">
+                  <span className="font-display font-black text-xl tracking-tight">
+                    ēCoursie
+                  </span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-black font-display text-slate-900">
-                  ¡Hola, {userName}! Explora tu Aventura
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-700 font-semibold">
-                  Elige un mosaico de color y supera el Nivel 1 para abrir la siguiente misión.
-                </p>
-              </div>
-            </div>
 
-            {/* Selector de Estado de Ánimo con Caritas (Habitz / moimoi) */}
-            <div className="bg-white/90 backdrop-blur-xs p-4 rounded-3xl border border-emerald-200 shadow-xs space-y-2">
-              <div className="text-xs font-extrabold text-slate-800">
-                ¿Cómo te sientes hoy?
+                <nav className="space-y-1.5" aria-label="Menú lateral eCoursie">
+                  <button
+                    type="button"
+                    onClick={() => setSubView('quixel_dashboard')}
+                    className="w-full px-3.5 py-2.5 rounded-2xl text-white/80 hover:text-white hover:bg-white/10 font-bold text-xs flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <LayoutGrid className="w-4 h-4 shrink-0" />
+                    <span>Dashboard</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubView('ecoursie_courses')}
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-white text-[#5B58EB] font-extrabold text-xs flex items-center gap-2.5 shadow-sm cursor-pointer"
+                  >
+                    <FolderKanban className="w-4 h-4 shrink-0" />
+                    <span>Todos los Cursos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenFriends?.()}
+                    className="w-full px-3.5 py-2.5 rounded-2xl text-white/80 hover:text-white hover:bg-white/10 font-bold text-xs flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4 shrink-0" />
+                    <span>Mensajes</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenFriends?.()}
+                    className="w-full px-3.5 py-2.5 rounded-2xl text-white/80 hover:text-white hover:bg-white/10 font-bold text-xs flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <Users className="w-4 h-4 shrink-0" />
+                    <span>Amigos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRoutines?.()}
+                    className="w-full px-3.5 py-2.5 rounded-2xl text-white/80 hover:text-white hover:bg-white/10 font-bold text-xs flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <CalendarCheck2 className="w-4 h-4 shrink-0" />
+                    <span>Rutinas</span>
+                  </button>
+                </nav>
               </div>
-              <div className="flex items-center gap-2">
-                {MOOD_OPTIONS.map((m) => {
-                  const active = mood === m.id;
-                  return (
+
+              <div className="pt-4 border-t border-white/15 hidden lg:block">
+                <button
+                  type="button"
+                  onClick={onOpenParentalPanel}
+                  className="w-full px-3 py-2 rounded-xl text-white/75 hover:text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Ajustes Padres</span>
+                </button>
+              </div>
+            </aside>
+
+            {/* COLUMNA 2 Y 3 EN PANEL BLANCO REDONDEADO */}
+            <div className="lg:col-span-10 rounded-[30px] bg-white dark:bg-[#19162B] text-slate-900 dark:text-white p-5 sm:p-7 grid grid-cols-1 xl:grid-cols-12 gap-7">
+              {/* COLUMNA 2 (Centro - 8 cols): "Mis Cursos", Filtros Suaves y Tarjetas Horizontales Anchas Pastel */}
+              <div className="xl:col-span-8 space-y-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-2xl sm:text-3xl font-black font-display text-[#3F3D8F] dark:text-purple-200">
+                    Mis Cursos
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-200">
+                      <Search className="w-4 h-4" />
+                    </span>
                     <button
-                      key={m.id}
                       type="button"
-                      onClick={() => {
-                        playRewardSound('pop');
-                        onChangeMood?.(m.id);
-                      }}
-                      title={m.label}
-                      aria-label={`Estado de ánimo ${m.label}`}
-                      className={`p-1.5 rounded-2xl border-2 transition-all flex flex-col items-center gap-0.5 ${
-                        active
-                          ? 'border-emerald-600 bg-emerald-50 scale-110 shadow-xs'
-                          : 'border-transparent hover:bg-slate-100 opacity-80'
+                      onClick={() => setSubView('quixel_dashboard')}
+                      className="px-3.5 py-1.5 rounded-full bg-[#5B58EB] text-white text-xs font-extrabold cursor-pointer"
+                    >
+                      Volver a Dashboard
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filtros suaves arriba (Filter by: Tiempo, Nivel, Idioma, Tipo) */}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-bold text-slate-400 mr-1">Filtrar por:</span>
+                  {(['todos', 'inicial', 'avanzado'] as const).map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setCourseFilterLevel(lvl)}
+                      className={`px-3.5 py-1.5 rounded-full font-extrabold capitalize transition-all cursor-pointer ${
+                        courseFilterLevel === lvl
+                          ? 'bg-[#5B58EB] text-white shadow-2xs'
+                          : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      {m.faceSvg}
-                      <span className="text-[10px] font-extrabold text-slate-700">
-                        {m.label}
-                      </span>
+                      {lvl === 'todos'
+                        ? 'Todos los Niveles ▾'
+                        : lvl === 'inicial'
+                        ? 'Tiempo: 15 min ▾'
+                        : 'Tipo: Interactivo ▾'}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {/* Tarjetas horizontales anchas en tonos pastel (lavanda, rosa suave, celeste) con ilustración a la izquierda y botón circular ">" */}
+                <div className="space-y-4">
+                  {coursesForAge.map((course, idx) => {
+                    const theme =
+                      ecoursiePastelThemes[idx % ecoursiePastelThemes.length];
+                    const doneCount = course.lessons.filter((l) =>
+                      completedLessonIds.includes(l.id)
+                    ).length;
+                    const firstPending =
+                      course.lessons.find(
+                        (l) => !completedLessonIds.includes(l.id)
+                      ) || course.lessons[0];
+
+                    return (
+                      <div
+                        key={course.id}
+                        data-testid={`ecoursie-course-card-${course.subject}`}
+                        className={`rounded-[28px] border p-5 sm:p-6 transition-all flex flex-col sm:flex-row items-center justify-between gap-5 shadow-xs hover:shadow-md ${theme.cardBg}`}
+                      >
+                        {/* Ilustración estilo eCoursie a la izquierda */}
+                        <div className="w-28 h-24 rounded-2xl bg-white/90 dark:bg-slate-900/60 border border-white flex flex-col items-center justify-center relative shrink-0 shadow-2xs">
+                          <span
+                            className="w-3 h-3 rounded-full absolute top-2.5 left-2.5"
+                            style={{ backgroundColor: theme.accentBlob }}
+                          />
+                          <div
+                            className="p-3 rounded-2xl text-white"
+                            style={{ backgroundColor: theme.accentBlob }}
+                          >
+                            {getSubjectIcon(course.subject)}
+                          </div>
+                          <span className="text-[10px] font-mono font-bold mt-1 opacity-75">
+                            {doneCount}/{course.lessons.length} niv
+                          </span>
+                        </div>
+
+                        {/* Texto central del curso */}
+                        <div className="flex-1 space-y-1.5 text-center sm:text-left min-w-0">
+                          <h3 className="text-lg sm:text-xl font-black font-display text-slate-900 dark:text-white">
+                            {course.title}
+                          </h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                            {course.subtitle}
+                          </p>
+                          <div className="pt-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                            Etapa <strong className="text-slate-800 dark:text-white">{ageGroup} años</strong> · Progreso:{' '}
+                            <strong className="text-[#5B58EB] dark:text-[#D4FF59]">
+                              {Math.round(
+                                (doneCount / Math.max(1, course.lessons.length)) *
+                                  100
+                              )}
+                              %
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Botón circular ">" para entrar al curso */}
+                        <button
+                          type="button"
+                          aria-label={`Entrar a ${course.title}`}
+                          onClick={() => {
+                            playRewardSound('pop');
+                            setSelectedCourseId(course.id);
+                            startLesson(firstPending);
+                          }}
+                          className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-105 shrink-0 cursor-pointer ${theme.circleBtn}`}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* COLUMNA 3 (Derecha - 4 cols): Calendario Mensual Interactivo + Amigos Conectados (Online Users) */}
+              <div className="xl:col-span-4 space-y-6 border-t xl:border-t-0 xl:border-l border-slate-100 dark:border-white/10 pt-5 xl:pt-0 xl:pl-6">
+                {/* Perfil arriba a la derecha */}
+                <div className="flex items-center justify-end gap-3">
+                  <div className="text-right">
+                    <div className="font-extrabold text-sm">{userName}</div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {userFriendCode}
+                    </div>
+                  </div>
+                  <AvatarBadge avatarId={userAvatarId} size="sm" />
+                </div>
+
+                {/* Calendario Mensual Interactivo */}
+                <div
+                  data-testid="ecoursie-monthly-calendar"
+                  className="space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black text-base text-[#3F3D8F] dark:text-purple-200 flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-[#5B58EB]" />
+                      <span>Calendario Mensual</span>
+                    </h3>
+                    <div className="flex items-center gap-1 text-slate-400">
+                      <ChevronLeft className="w-4 h-4" />
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400">
+                    <span>Lun</span>
+                    <span>Mar</span>
+                    <span>Mié</span>
+                    <span>Jue</span>
+                    <span>Vie</span>
+                    <span>Sáb</span>
+                    <span>Dom</span>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {CALENDAR_DAYS.map((dayNum) => {
+                      const isRangeHighlight = dayNum >= 9 && dayNum <= 13;
+                      const isEndpoint =
+                        dayNum === 9 ||
+                        dayNum === 13 ||
+                        dayNum === selectedCalendarDay;
+                      return (
+                        <button
+                          key={dayNum}
+                          type="button"
+                          onClick={() => setSelectedCalendarDay(dayNum)}
+                          className={`h-8 rounded-full text-xs font-extrabold transition-all flex items-center justify-center cursor-pointer ${
+                            isEndpoint
+                              ? 'bg-[#5B58EB] text-white shadow-2xs'
+                              : isRangeHighlight
+                              ? 'bg-[#E8E7FF] text-[#5B58EB]'
+                              : 'hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {dayNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Lista de Usuarios Conectados ("Amigos Conectados" / Online Users) */}
+                <div
+                  data-testid="ecoursie-online-users"
+                  className="space-y-3 pt-3 border-t border-slate-100 dark:border-white/10"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black text-base text-[#3F3D8F] dark:text-purple-200">
+                      Amigos Conectados
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => onOpenFriends?.()}
+                      className="text-xs font-bold text-slate-400 hover:text-[#5B58EB] cursor-pointer"
+                    >
+                      Ver todos
+                    </button>
+                  </div>
+
+                  {connectedPeersList.length === 0 ? (
+                    <div className="p-4 rounded-2xl bg-[#F6F6FF] dark:bg-white/5 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <AvatarBadge avatarId={userAvatarId} size="sm" />
+                          <div>
+                            <div className="font-extrabold text-slate-900 dark:text-white">
+                              {userName} (Tú)
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-400">
+                              {userFriendCode}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#5B58EB] ring-4 ring-[#5B58EB]/20" />
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                        Comparte tu código <strong>{userFriendCode}</strong> en la pestaña Amigos para ver a tus compañeros en vivo.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {connectedPeersList.slice(0, 4).map((peer) => (
+                        <button
+                          key={peer.id}
+                          type="button"
+                          onClick={() => onOpenFriends?.()}
+                          className="w-full p-2.5 rounded-2xl hover:bg-[#F5F4FF] dark:hover:bg-white/5 flex items-center justify-between gap-2 text-left transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <AvatarBadge avatarId={peer.avatarId} size="sm" />
+                            <div className="min-w-0">
+                              <div className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                                {peer.name}
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-400 truncate">
+                                {peer.friendCode}
+                              </div>
+                            </div>
+                          </div>
+                          <span
+                            title="Conectado en vivo"
+                            className="w-2.5 h-2.5 rounded-full bg-[#5B58EB] shrink-0"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* Mosaicos de Cursos con Colores Vivos e Inclinación Suave */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-2 relative z-10">
-            {coursesForAge.map((course, idx) => {
-              const isSelected = course.id === activeCourse.id;
-              const doneCount = course.lessons.filter((l) =>
-                completedLessonIds.includes(l.id)
-              ).length;
-              const gradientClass = tileColorsBySubject[course.subject];
-              const tiltClass = idx % 2 === 0 ? 'hover:-rotate-1' : 'hover:rotate-1';
-
-              return (
-                <button
-                  key={course.id}
-                  type="button"
-                  onClick={() => {
-                    playRewardSound('pop');
-                    setSelectedCourseId(course.id);
-                  }}
-                  className={`p-4 rounded-3xl border-2 text-left transition-all flex flex-col justify-between gap-2.5 shadow-sm ${tiltClass} ${
-                    isSelected
-                      ? `bg-gradient-to-br ${gradientClass} border-white ring-4 ring-emerald-500/30 scale-[1.02]`
-                      : 'bg-white/95 text-slate-900 border-white hover:border-emerald-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="p-2 rounded-2xl bg-black/10">
-                      {getSubjectIcon(course.subject)}
-                    </span>
-                    <span className="text-xs font-mono font-extrabold tabular-nums px-2 py-0.5 rounded-full bg-black/10">
-                      {doneCount}/{course.lessons.length}
-                    </span>
-                  </div>
-                  <div className="font-extrabold text-sm leading-snug">
-                    {course.title}
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </section>
       )}
@@ -1151,36 +1569,6 @@ export function LearnView({
                   <div className="p-3 rounded-xl bg-white/90 dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs leading-relaxed">
                     {getBeadPrayerText()}
                   </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      disabled={beadStep === 0}
-                      onClick={() => setBeadStep((b) => Math.max(0, b - 1))}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold disabled:opacity-40 flex items-center gap-1"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                      Cuenta Anterior
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playRewardSound('pop');
-                        if (beadStep < 11) {
-                          setBeadStep((b) => b + 1);
-                        } else if (mysteryIndex < 4) {
-                          setMysteryIndex((m) => m + 1);
-                          setBeadStep(0);
-                        } else {
-                          setBeadStep(0);
-                        }
-                      }}
-                      className="px-4 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"
-                    >
-                      {beadStep < 11 ? 'Siguiente Cuenta' : 'Siguiente Misterio'}
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1220,15 +1608,6 @@ export function LearnView({
                 </div>
               </div>
             </div>
-
-            {isYoungKid && (
-              <div className="p-4 rounded-2xl bg-[#ECFCCB] dark:bg-emerald-950/60 border border-[#84CC16] text-slate-900 dark:text-emerald-100 text-xs font-bold space-y-1">
-                <div>★ Meta Especial de Graduación:</div>
-                <p className="font-medium">
-                  Cuando completes todas las lecciones de <strong>Aprendo a Leer</strong> y de <strong>Ajedrez para Menores</strong>, pasarás automáticamente a la siguiente etapa con una fiesta y una medalla especial.
-                </p>
-              </div>
-            )}
           </div>
         </aside>
       </div>

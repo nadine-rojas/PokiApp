@@ -73,7 +73,91 @@ export interface ModerationResult {
   allowed: boolean;
   sanitizedText: string;
   reason?: string;
+  isCriticalGrooming?: boolean;
+  autoBlockAndExpelSender?: boolean;
+  violationCategory?: 'photo_request' | 'address_location' | 'school_info' | 'phone_contact' | 'social_media' | 'in_person_meetup' | 'profanity';
 }
+
+export interface FacialAgeVerificationResult {
+  allowed: boolean;
+  faceDetected: boolean;
+  estimatedAge: number | null;
+  estimatedAgeRange: string;
+  isMinorUnder18: boolean;
+  isAdultOver18: boolean;
+  alertTitle?: string;
+  reason: string;
+}
+
+export interface ImageSafetyScanResult {
+  allowed: boolean;
+  containsPersonOrFace: boolean;
+  detectedCategory: 'safe_drawing' | 'safe_homework' | 'safe_gif' | 'real_person_or_child_blocked';
+  reason: string;
+}
+
+export interface SafeKidsGifItem {
+  id: string;
+  title: string;
+  tag: string;
+  bgGradient: string;
+  accentColor: string;
+  caption: string;
+}
+
+export const ANTI_CHILD_PHOTO_LEGAL_MESSAGE =
+  'Bloqueado por seguridad: Por leyes de protección infantil está prohibido subir fotos reales de niños o personas. Solo puedes compartir dibujos de tus cursos, capturas de tareas o GIFs';
+
+export const SAFE_KIDS_GIFS: SafeKidsGifItem[] = [
+  {
+    id: 'gif_star_dance',
+    title: 'Estrella Súper Brillante',
+    tag: '¡Genial!',
+    bgGradient: 'from-[#A594F9] to-[#7C69EF]',
+    accentColor: '#FDE047',
+    caption: '★ ¡Súper Estrella! ★',
+  },
+  {
+    id: 'gif_heart_cheer',
+    title: 'Corazón Amigable',
+    tag: 'Amistad',
+    bgGradient: 'from-[#FF9EBB] to-[#F43F5E]',
+    accentColor: '#FFE4E6',
+    caption: '♥ ¡Qué buena onda! ♥',
+  },
+  {
+    id: 'gif_chess_crown',
+    title: 'Jaque Mate Campeón',
+    tag: 'Ajedrez',
+    bgGradient: 'from-[#34D399] to-[#059669]',
+    accentColor: '#FEF08A',
+    caption: '♔ ¡Buena partida! ♔',
+  },
+  {
+    id: 'gif_rocket_boost',
+    title: 'Cohete a la Meta',
+    tag: 'Éxito',
+    bgGradient: 'from-[#60A5FA] to-[#4F46E5]',
+    accentColor: '#BEF264',
+    caption: '🚀 ¡Rumbo al Nivel 10! 🚀',
+  },
+  {
+    id: 'gif_art_palette',
+    title: 'Artista Creativo',
+    tag: 'Dibujo',
+    bgGradient: 'from-[#FBBF24] to-[#EA580C]',
+    accentColor: '#FFFBEB',
+    caption: '🎨 ¡Arte Increíble! 🎨',
+  },
+  {
+    id: 'gif_piano_music',
+    title: 'Ritmo Musical',
+    tag: 'Piano',
+    bgGradient: 'from-[#C084FC] to-[#9333EA]',
+    accentColor: '#F5D0FE',
+    caption: '♪ ¡Gran Melodía! ♫',
+  },
+];
 
 export interface LessonRewardSummary {
   xpEarned: number;
@@ -107,10 +191,11 @@ export function getAvatarAgeTier(age: number): 'under_9' | '9_plus' {
 }
 
 /**
- * La sección "Rutinas" y sus recompensas de +5 gemas por rutina existen desde los 10 años en adelante.
+ * La sección "Rutinas / Horario de Lecciones" (Schedule / Learning Plan) está disponible
+ * en celular y computadora, y otorga +5 gemas por cada rutina o hábito completado.
  */
 export function canAccessRoutines(age: number): boolean {
-  return age >= 10;
+  return age >= 3;
 }
 
 /**
@@ -153,21 +238,17 @@ export function getDefaultSubjectsForAgeGroup(ageGroup: AgeGroup): CourseSubject
 }
 
 /**
- * Barra de navegación inferior flotante en forma de píldora (sin mostrar nunca grupos de edad):
- * Incluye "Juegos" en la barra de navegación y mantiene "Rutinas" desde los 10 años.
+ * Barra de navegación inferior flotante en forma de cápsula (sin mostrar nunca grupos de edad):
+ * Incluye "Rutinas" (Schedule / Learning Plan) y "Juegos" tanto en celular como en computadora.
  */
 export function getNavigationTabsForAgeGroup(
   ageGroup: AgeGroup,
-  age?: number
+  _age?: number
 ): NavTabId[] {
   if (ageGroup === '3-6') {
-    return ['learn', 'library', 'chess', 'games', 'friends', 'profile'];
+    return ['learn', 'library', 'routines', 'chess', 'games', 'friends', 'profile'];
   }
-  const effectiveAge = age !== undefined ? age : ageGroup === '14-18' ? 15 : 10;
-  if (canAccessRoutines(effectiveAge)) {
-    return ['learn', 'chess', 'routines', 'games', 'friends', 'profile'];
-  }
-  return ['learn', 'chess', 'games', 'friends', 'profile'];
+  return ['learn', 'routines', 'chess', 'games', 'friends', 'profile'];
 }
 
 /**
@@ -709,11 +790,117 @@ const BANNED_WORDS = [
 ];
 
 /**
- * Modera mensajes del chat para proteger a menores:
- * 1. Bloquea palabras inapropiadas o insultos.
- * 2. Bloquea compartir datos personales (teléfonos, correos electrónicos, direcciones físicas).
+ * 1A) Evaluador del Detector Facial de Edad en el Registro / Inicio de Sesión (Cámara Web en vivo):
+ * - Verifica que haya un rostro real frente a la cámara y que pertenezca a un niño o adolescente (3 a 18 años).
+ * - Si detecta un adulto (>18 años) o no detecta un rostro real, bloquea inmediatamente el registro
+ *   con una alerta de seguridad infantil.
  */
-export function moderateChatMessage(rawText: string): ModerationResult {
+export function evaluateFacialAgeVerification(params: {
+  faceDetected: boolean;
+  estimatedAge: number | null;
+  isAdultOver18?: boolean;
+}): FacialAgeVerificationResult {
+  if (!params.faceDetected || params.estimatedAge === null) {
+    return {
+      allowed: false,
+      faceDetected: false,
+      estimatedAge: null,
+      estimatedAgeRange: 'Sin rostro detectado',
+      isMinorUnder18: false,
+      isAdultOver18: false,
+      alertTitle: 'ALERTA DE SEGURIDAD INFANTIL: No se detectó un rostro real',
+      reason:
+        'Registro bloqueado por seguridad infantil: Debes colocarte frente a la cámara para verificar que eres un niño o adolescente real (3 a 18 años).',
+    };
+  }
+
+  const roundedAge = Math.round(params.estimatedAge);
+  const isAdult = Boolean(params.isAdultOver18) || roundedAge > 18;
+
+  if (isAdult) {
+    return {
+      allowed: false,
+      faceDetected: true,
+      estimatedAge: roundedAge,
+      estimatedAgeRange: `${roundedAge}+ años (Adulto >18)`,
+      isMinorUnder18: false,
+      isAdultOver18: true,
+      alertTitle: 'ALERTA DE SEGURIDAD INFANTIL: Rostro de Adulto (>18 años) Detectado',
+      reason:
+        'Acceso bloqueado inmediatamente: El detector facial con IA identificó a un adulto mayor de 18 años. Por protección infantil, esta plataforma es exclusiva para niños y jóvenes de 3 a 18 años.',
+    };
+  }
+
+  const safeChildAge = Math.max(3, Math.min(18, roundedAge));
+  const group = getAgeGroup(safeChildAge);
+
+  return {
+    allowed: true,
+    faceDetected: true,
+    estimatedAge: safeChildAge,
+    estimatedAgeRange: `${safeChildAge} años (Menor verificado · Etapa ${group})`,
+    isMinorUnder18: true,
+    isAdultOver18: false,
+    reason: `Verificación facial aprobada: Rostro de menor de edad (${safeChildAge} años) verificado correctamente por el Escudo de Seguridad Infantil.`,
+  };
+}
+
+/**
+ * 1B) Escáner de Privacidad Anti-Fotos de Niños antes de enviar imágenes en el chat:
+ * - Si identifica un rostro real o la foto de un niño/persona, bloquea la subida inmediatamente
+ *   con el mensaje legal obligatorio.
+ * - Solo permite dibujos de los cursos, capturas de tareas o GIFs seguros.
+ */
+export function evaluateChatImageSafety(params: {
+  containsPersonOrFace: boolean;
+  fileName?: string;
+  imageKind?: 'drawing' | 'homework' | 'gif' | 'photo';
+}): ImageSafetyScanResult {
+  const lowerName = (params.fileName || '').toLowerCase();
+  const nameLooksLikeRealPerson =
+    /\b(selfie|rostro|cara|nino|niño|nina|niña|persona|retrato|foto_real|portrait|face|child|kid)\b/i.test(
+      lowerName
+    );
+
+  if (
+    params.containsPersonOrFace ||
+    params.imageKind === 'photo' ||
+    nameLooksLikeRealPerson
+  ) {
+    return {
+      allowed: false,
+      containsPersonOrFace: true,
+      detectedCategory: 'real_person_or_child_blocked',
+      reason: ANTI_CHILD_PHOTO_LEGAL_MESSAGE,
+    };
+  }
+
+  const category =
+    params.imageKind === 'gif'
+      ? 'safe_gif'
+      : params.imageKind === 'homework'
+      ? 'safe_homework'
+      : 'safe_drawing';
+
+  return {
+    allowed: true,
+    containsPersonOrFace: false,
+    detectedCategory: category,
+    reason:
+      'Imagen verificada por el Escáner de Privacidad IA: Dibujo o tarea sin rostros ni fotos reales de personas.',
+  };
+}
+
+/**
+ * 1C) Detector Automático de Grooming y Datos Personales en el Chat (Bloqueo y Expulsión Instantánea):
+ * Analiza en tiempo real cada mensaje enviado o recibido. Si alguien pide u ofrece:
+ * - Fotos personales ("mandame una foto", "mostrate", "pasa foto", "envia tu foto")
+ * - Dirección de casa ("dónde vivís", "donde vives", "tu dirección", "calle", "domicilio")
+ * - Escuela ("a qué escuela vas", "tu colegio")
+ * - Teléfono, redes sociales o verse en persona ("encontrarnos", "vernos en persona")
+ * Bloquea el mensaje inmediatamente y activa `autoBlockAndExpelSender: true` para expulsar y bloquear al usuario.
+ */
+export function detectGroomingOrPersonalDataInChat(rawText: string): ModerationResult {
   const trimmed = rawText.trim();
   if (!trimmed) {
     return {
@@ -728,26 +915,92 @@ export function moderateChatMessage(rawText: string): ModerationResult {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  for (const word of BANNED_WORDS) {
-    const cleanWord = word.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const regex = new RegExp(`\\b${cleanWord}\\b`, 'i');
-    if (regex.test(normalized)) {
-      return {
-        allowed: false,
-        sanitizedText: trimmed.replace(regex, '***'),
-        reason:
-          'Mensaje bloqueado por el filtro de seguridad: mantengamos un lenguaje amable y respetuoso.',
-      };
-    }
+  // 1. Petición u ofrecimiento de fotos personales / cámara ("mandame una foto", "mostrate", "pasa foto", etc.)
+  const photoRequestRegex =
+    /\b(mandame una foto|mandame foto|manda una foto|manda foto|pasame una foto|pasa foto|enviame una foto|envia una foto|envia foto|mostrate|muestrate|mostrar tu cara|ver tu cara|foto tuya|tu foto|mandar foto|subi una foto tuya|sacate una foto|prende la camara)\b/i;
+  if (photoRequestRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[MENSAJE BLOQUEADO POR SEGURIDAD INFANTIL]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'photo_request',
+      reason:
+        'ALERTA DE PROTECCIÓN INFANTIL: Se detectó solicitud o envío de fotos personales. El mensaje fue bloqueado y el usuario ha sido bloqueado y expulsado automáticamente por seguridad.',
+    };
   }
 
+  // 2. Dirección de casa o ubicación ("dónde vivís", "donde vives", "tu dirección", "calle", etc.)
+  const addressLocationRegex =
+    /\b(donde vivis|donde vives|en donde vivis|en donde vives|cual es tu direccion|tu direccion|mi direccion es|vivo en la calle|en que calle vivis|en que calle vives|donde queda tu casa|pasa tu ubicacion|mandame tu ubicacion|calle|avenida|domicilio)\b/i;
+  if (addressLocationRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[UBICACIÓN BLOQUEADA POR SEGURIDAD INFANTIL]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'address_location',
+      reason:
+        'ALERTA DE PROTECCIÓN INFANTIL: Está prohibido pedir o compartir dirección de casa o ubicación. El mensaje fue bloqueado y el usuario ha sido bloqueado y expulsado automáticamente.',
+    };
+  }
+
+  // 3. Escuela o colegio ("a qué escuela vas", "tu colegio", "en qué colegio estudias")
+  const schoolRegex =
+    /\b(a que escuela vas|que escuela vas|cual es tu escuela|cual es tu colegio|a que colegio vas|en que colegio estudias|nombre de tu escuela|nombre de tu colegio|donde estudias)\b/i;
+  if (schoolRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[DATO ESCOLAR BLOQUEADO POR SEGURIDAD]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'school_info',
+      reason:
+        'ALERTA DE PROTECCIÓN INFANTIL: No se permite pedir ni compartir el nombre de la escuela o colegio. Usuario bloqueado y expulsado automáticamente por seguridad.',
+    };
+  }
+
+  // 4. Encuentros en persona ("vernos en persona", "encontrarnos", "salir solos", "nos vemos en")
+  const meetupRegex =
+    /\b(vernos en persona|encontrarnos en persona|juntarnos solos|salir solos|vengas a mi casa|voy a tu casa|nos vemos en el parque|sin que sepan tus papas|no le digas a tus padres)\b/i;
+  if (meetupRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[MENSAJE BLOQUEADO POR SEGURIDAD INFANTIL]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'in_person_meetup',
+      reason:
+        'ALERTA CRÍTICA DE PROTECCIÓN INFANTIL: Se detectó un intento de encuentro o contacto privado. El mensaje fue bloqueado y el usuario fue expulsado inmediatamente.',
+    };
+  }
+
+  // 5. Redes sociales externas o contacto externo (WhatsApp, Instagram, TikTok, Discord, etc.)
+  const socialMediaRegex =
+    /\b(whatsapp|instagram|tiktok|snapchat|telegram|pasame tu insta|agregame a discord|mi numero de cel|dame tu telefono|pasa tu numero|pasame tu numero)\b/i;
+  if (socialMediaRegex.test(normalized)) {
+    return {
+      allowed: false,
+      sanitizedText: '[CONTACTO EXTERNO BLOQUEADO]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'social_media',
+      reason:
+        'ALERTA DE PROTECCIÓN INFANTIL: Está prohibido pedir teléfonos o redes sociales externas. Usuario bloqueado y expulsado automáticamente por seguridad.',
+    };
+  }
+
+  // 6. Correo electrónico o número telefónico directo (7+ dígitos)
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
   if (emailRegex.test(trimmed)) {
     return {
       allowed: false,
-      sanitizedText: trimmed.replace(emailRegex, '[correo oculto]'),
+      sanitizedText: '[correo oculto]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'phone_contact',
       reason:
-        'Por tu seguridad, no está permitido compartir correos electrónicos en el chat.',
+        'ALERTA DE PROTECCIÓN INFANTIL: No está permitido compartir correos electrónicos ni datos privados en el chat. Usuario bloqueado por seguridad.',
     };
   }
 
@@ -756,24 +1009,69 @@ export function moderateChatMessage(rawText: string): ModerationResult {
     return {
       allowed: false,
       sanitizedText: '[número oculto]',
+      isCriticalGrooming: true,
+      autoBlockAndExpelSender: true,
+      violationCategory: 'phone_contact',
       reason:
-        'Por tu seguridad, no está permitido compartir números de teléfono ni datos privados.',
-    };
-  }
-
-  const addressRegex = /\b(calle|avenida|av\.|domicilio|mi direccion es|vivo en la calle)\b/i;
-  if (addressRegex.test(normalized)) {
-    return {
-      allowed: false,
-      sanitizedText: '[dirección oculta]',
-      reason:
-        'Por tu seguridad, nunca compartas tu dirección física con otras personas en internet.',
+        'ALERTA DE PROTECCIÓN INFANTIL: No está permitido pedir ni compartir números de teléfono. Usuario bloqueado y expulsado por seguridad.',
     };
   }
 
   return {
     allowed: true,
     sanitizedText: trimmed,
+    isCriticalGrooming: false,
+    autoBlockAndExpelSender: false,
+  };
+}
+
+/**
+ * Modera mensajes del chat para proteger a menores:
+ * 1. Ejecuta el Guardián IA Anti-Grooming y Datos Personales (bloqueo y expulsión inmediata si pide fotos, dirección, escuela, teléfono, redes o encuentros).
+ * 2. Bloquea palabras inapropiadas o insultos.
+ */
+export function moderateChatMessage(rawText: string): ModerationResult {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return {
+      allowed: false,
+      sanitizedText: '',
+      reason: 'Escribe un mensaje antes de enviar.',
+    };
+  }
+
+  // Primero verificamos el detector crítico de Grooming y Datos Personales
+  const groomingCheck = detectGroomingOrPersonalDataInChat(trimmed);
+  if (!groomingCheck.allowed) {
+    return groomingCheck;
+  }
+
+  const normalized = trimmed
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  for (const word of BANNED_WORDS) {
+    const cleanWord = word.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const regex = new RegExp(`\\b${cleanWord}\\b`, 'i');
+    if (regex.test(normalized)) {
+      return {
+        allowed: false,
+        sanitizedText: trimmed.replace(regex, '***'),
+        isCriticalGrooming: false,
+        autoBlockAndExpelSender: false,
+        violationCategory: 'profanity',
+        reason:
+          'Mensaje bloqueado por el filtro de seguridad: mantengamos un lenguaje amable y respetuoso.',
+      };
+    }
+  }
+
+  return {
+    allowed: true,
+    sanitizedText: trimmed,
+    isCriticalGrooming: false,
+    autoBlockAndExpelSender: false,
   };
 }
 
@@ -808,7 +1106,7 @@ export function canUsersChat(
   if (friendshipStatus === 'blocked') {
     return {
       canChat: false,
-      reason: 'Este usuario está bloqueado. No pueden enviarse mensajes.',
+      reason: 'Este usuario fue bloqueado y expulsado por el sistema de seguridad infantil.',
     };
   }
   if (friendshipStatus !== 'accepted') {
@@ -827,3 +1125,4 @@ export function canUsersChat(
   }
   return { canChat: true };
 }
+

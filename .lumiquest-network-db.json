@@ -19,10 +19,10 @@
       "name": "Leia",
       "age": 10,
       "ageGroup": "7-13",
-      "avatarId": "p9_night_cat_boy",
-      "xp": 495,
+      "avatarId": "p9_cyber_blue_girl",
+      "xp": 545,
       "streak": 1,
-      "updatedAt": 1793570644104
+      "updatedAt": 1793575275273
     },
     "usr_valentina_11_kc6": {
       "id": "usr_valentina_11_kc6",
@@ -47,17 +47,65 @@
       "xp": 0,
       "streak": 0,
       "updatedAt": 1793570655750
+    },
+    "peer_lumi7549": {
+      "id": "peer_lumi7549",
+      "friendCode": "LUMI-7549",
+      "username": "@lumi_7549",
+      "name": "Amigo LUMI-7549",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_cyber_blue_girl",
+      "xp": 120,
+      "streak": 2,
+      "updatedAt": 1793575275273
+    },
+    "usr_valentina_10_x7j": {
+      "id": "usr_valentina_10_x7j",
+      "friendCode": "LUMI-3194",
+      "username": "@valentina",
+      "name": "Valentina",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793576310636
+    },
+    "peer_lumi7788": {
+      "id": "peer_lumi7788",
+      "friendCode": "LUMI-7788",
+      "username": "@lumi_7788",
+      "name": "Amigo LUMI-7788",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 120,
+      "streak": 2,
+      "updatedAt": 1793576310637
+    },
+    "usr_valentina_10_hxg": {
+      "id": "usr_valentina_10_hxg",
+      "friendCode": "LUMI-3194",
+      "username": "@valentina",
+      "name": "Valentina",
+      "age": 10,
+      "ageGroup": "7-13",
+      "avatarId": "p9_flower_crown_boy",
+      "xp": 0,
+      "streak": 0,
+      "updatedAt": 1793576430848
     }
   },
   "friendships": {
     "fr_usr_leo_11_ekw__usr_valentina_11_kc6": {
       "id": "fr_usr_leo_11_ekw__usr_valentina_11_kc6",
       "requesterId": "usr_leo_11_ekw",
-      "receiverId": "usr_valentina_11_kc6",
+      "receiverId": "usr_valentina_10_hxg",
       "requesterCode": "LUMI-7757",
-      "receiverCode": "LUMI-1575",
+      "receiverCode": "LUMI-3194",
       "ageGroup": "7-13",
-      "status": "accepted",
+      "status": "blocked",
       "requesterProfile": {
         "id": "usr_leo_11_ekw",
         "friendCode": "LUMI-7757",
@@ -71,19 +119,100 @@
         "updatedAt": 1793570652776
       },
       "receiverProfile": {
-        "id": "usr_valentina_11_kc6",
-        "friendCode": "LUMI-1575",
+        "id": "usr_valentina_10_hxg",
+        "friendCode": "LUMI-3194",
         "username": "@valentina",
         "name": "Valentina",
-        "age": 11,
+        "age": 10,
         "ageGroup": "7-13",
         "avatarId": "p9_flower_crown_boy",
         "xp": 0,
         "streak": 0,
-        "updatedAt": 1793570647372
+        "updatedAt": 1793576430848
+      },
+      "chatMessages": [
+        {
+          "id": "msg_1793576431188_3su6",
+          "senderId": "usr_valentina_10_hxg",
+          "senderName": "Valentina",
+          "text": "[GIF Animado: Estrella Súper Brillante] ★ ¡Súper Estrella! ★",
+          "timestamp": "23:40",
+          "attachmentType": "gif",
+          "attachmentId": "gif_star_dance",
+          "attachmentTitle": "Estrella Súper Brillante"
+        }
+      ],
+      "updatedAt": 1793576431548
+    },
+    "fr_peer_lumi7549__usr_leialove_10_s3r": {
+      "id": "fr_peer_lumi7549__usr_leialove_10_s3r",
+      "requesterId": "usr_leialove_10_s3r",
+      "receiverId": "peer_lumi7549",
+      "requesterCode": "LUMI-5291",
+      "receiverCode": "LUMI-7549",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_leialove_10_s3r",
+        "friendCode": "LUMI-5291",
+        "username": "@leia_love",
+        "name": "Leia",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_cyber_blue_girl",
+        "xp": 545,
+        "streak": 1,
+        "updatedAt": 1793575275273
+      },
+      "receiverProfile": {
+        "id": "peer_lumi7549",
+        "friendCode": "LUMI-7549",
+        "username": "@lumi_7549",
+        "name": "Amigo LUMI-7549",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_cyber_blue_girl",
+        "xp": 120,
+        "streak": 2,
+        "updatedAt": 1793575275273
       },
       "chatMessages": [],
-      "updatedAt": 1793570652776
+      "updatedAt": 1793575275273
+    },
+    "fr_peer_lumi7788__usr_valentina_10_x7j": {
+      "id": "fr_peer_lumi7788__usr_valentina_10_x7j",
+      "requesterId": "usr_valentina_10_x7j",
+      "receiverId": "peer_lumi7788",
+      "requesterCode": "LUMI-3194",
+      "receiverCode": "LUMI-7788",
+      "ageGroup": "7-13",
+      "status": "accepted",
+      "requesterProfile": {
+        "id": "usr_valentina_10_x7j",
+        "friendCode": "LUMI-3194",
+        "username": "@valentina",
+        "name": "Valentina",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 0,
+        "streak": 0,
+        "updatedAt": 1793576310636
+      },
+      "receiverProfile": {
+        "id": "peer_lumi7788",
+        "friendCode": "LUMI-7788",
+        "username": "@lumi_7788",
+        "name": "Amigo LUMI-7788",
+        "age": 10,
+        "ageGroup": "7-13",
+        "avatarId": "p9_flower_crown_boy",
+        "xp": 120,
+        "streak": 2,
+        "updatedAt": 1793576310637
+      },
+      "chatMessages": [],
+      "updatedAt": 1793576430848
     }
   },
   "rooms": {}
